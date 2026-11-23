@@ -45,6 +45,7 @@ SDManagerBridge / SDManager
 - ScreenCaptureKit은 지정된 디스플레이 ID를 찾아 캡처합니다. 캡처 출력은 BGRA 포맷이며, 요청된 FPS에 맞춘 프레임 간격과 3개 프레임의 큐 깊이를 사용합니다.
 - VideoToolbox는 실시간 H.264 인코딩 세션을 만들고 프레임 재정렬을 비활성화합니다. 결과 콜백은 인코딩된 데이터, presentation timestamp(PTS), 키프레임 여부를 전달합니다.
 - `SDManager`는 디스플레이, 캡처 및 인코더의 수명주기를 조정합니다. `SDAPI.mm`은 공개 C 함수를 Objective-C/Swift 브리지에 연결합니다.
+- 테스트 앱에서 캡처 중 **캡처 이미지 저장**을 누르면 다음 화면 프레임을 PNG로 변환해 저장 위치를 선택할 수 있습니다.
 
 ## 현재 범위와 주의사항
 

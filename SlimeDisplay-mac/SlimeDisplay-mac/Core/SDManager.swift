@@ -1,14 +1,38 @@
 import Foundation
 import CoreMedia
 import CoreGraphics
+import CoreVideo
 
-enum SDError: Error {
+enum SDError: LocalizedError {
     case invalidArgument
     case invalidState
     case displayCreationFailed
     case displayNotFound
     case captureFailed
+    case captureStopped
+    case captureFrameHasNoImageBuffer
     case encodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidArgument:
+            return "입력한 설정값이 올바르지 않습니다."
+        case .invalidState:
+            return "현재 상태에서는 이 작업을 수행할 수 없습니다."
+        case .displayCreationFailed:
+            return "가상 디스플레이를 생성하지 못했습니다."
+        case .displayNotFound:
+            return "캡처할 디스플레이를 찾지 못했습니다."
+        case .captureFailed:
+            return "화면 캡처에 실패했습니다."
+        case .captureStopped:
+            return "이미지를 가져오기 전에 화면 캡처가 중지되었습니다. 캡처를 다시 시작한 뒤 저장하세요."
+        case .captureFrameHasNoImageBuffer:
+            return "ScreenCaptureKit이 완전한 프레임을 알렸지만 이미지 버퍼가 없습니다. 다시 캡처해 주세요."
+        case .encodingFailed:
+            return "비디오 프레임 인코딩에 실패했습니다."
+        }
+    }
 }
 
 final class SDManager {
@@ -97,6 +121,14 @@ final class SDManager {
         }
 
         isCapturing = false
+    }
+
+    func captureNextFrame() async throws -> CVPixelBuffer {
+        guard isCapturing else {
+            throw SDError.invalidState
+        }
+
+        return try await captureManager.captureNextFrame()
     }
 
     func startEncoder() throws {

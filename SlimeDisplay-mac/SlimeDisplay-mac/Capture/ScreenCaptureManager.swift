@@ -1,6 +1,7 @@
 import Foundation
 import ScreenCaptureKit
 import CoreMedia
+import CoreVideo
 
 final class ScreenCaptureManager:
     NSObject,
@@ -8,6 +9,8 @@ final class ScreenCaptureManager:
     SCStreamDelegate
 {
     private var stream: SCStream?
+    private let snapshotLock = NSLock()
+    private var snapshotContinuation: CheckedContinuation<CVPixelBuffer, Error>?
 
     var onFrame: ((CMSampleBuffer) -> Void)?
 
@@ -66,8 +69,32 @@ final class ScreenCaptureManager:
     func stop() async throws {
         guard let stream else { return }
 
+        let continuation = snapshotLock.withLock {
+            defer { snapshotContinuation = nil }
+            return snapshotContinuation
+        }
+        continuation?.resume(throwing: SDError.captureStopped)
+
         try await stream.stopCapture()
         self.stream = nil
+    }
+
+    func captureNextFrame() async throws -> CVPixelBuffer {
+        try await withCheckedThrowingContinuation { continuation in
+            let canCapture = snapshotLock.withLock {
+                guard stream != nil, snapshotContinuation == nil else {
+                    return false
+                }
+
+                snapshotContinuation = continuation
+                return true
+            }
+
+            guard canCapture else {
+                continuation.resume(throwing: SDError.invalidState)
+                return
+            }
+        }
     }
 
     func stream(
@@ -80,6 +107,32 @@ final class ScreenCaptureManager:
             return
         }
 
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sampleBuffer,
+            createIfNecessary: false
+        ) as? [[SCStreamFrameInfo: Any]],
+              let statusValue = attachments.first?[.status] as? Int,
+              let frameStatus = SCFrameStatus(rawValue: statusValue),
+              frameStatus == .complete else {
+            return
+        }
+
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            NSLog("[SlimeDisplay] Complete screen-capture frame has no image buffer")
+            let continuation = snapshotLock.withLock {
+                defer { snapshotContinuation = nil }
+                return snapshotContinuation
+            }
+            continuation?.resume(throwing: SDError.captureFrameHasNoImageBuffer)
+            return
+        }
+
+        snapshotLock.lock()
+        let continuation = snapshotContinuation
+        snapshotContinuation = nil
+        snapshotLock.unlock()
+        continuation?.resume(returning: pixelBuffer)
+
         onFrame?(sampleBuffer)
     }
 
@@ -88,5 +141,10 @@ final class ScreenCaptureManager:
         didStopWithError error: Error
     ) {
         NSLog("ScreenCaptureKit stopped: %@", error.localizedDescription)
+        let continuation = snapshotLock.withLock {
+            defer { snapshotContinuation = nil }
+            return snapshotContinuation
+        }
+        continuation?.resume(throwing: error)
     }
 }
