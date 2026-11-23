@@ -1,0 +1,69 @@
+{
+  "" : {
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner-primary.dia",
+    "emit-module-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner-primary-emit-module.dia",
+    "pch" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner-primary.swiftdeps"
+  },
+  "/Users/Patron/Desktop/SlimeDisplay/SlimeDisplay-mac/SlimeDisplay-mac/Capture/ScreenCaptureManager.swift" : {
+    "const-values" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.swiftconstvalues",
+    "dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.d",
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.dia",
+    "index-unit-output-path" : "/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.o",
+    "llvm-bc" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.bc",
+    "object" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.o",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager.swiftdeps",
+    "swiftmodule" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/ScreenCaptureManager~partial.swiftmodule"
+  },
+  "/Users/Patron/Desktop/SlimeDisplay/SlimeDisplay-mac/SlimeDisplay-mac/Core/SDConfiguration.swift" : {
+    "const-values" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.swiftconstvalues",
+    "dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.d",
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.dia",
+    "index-unit-output-path" : "/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.o",
+    "llvm-bc" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.bc",
+    "object" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.o",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration.swiftdeps",
+    "swiftmodule" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDConfiguration~partial.swiftmodule"
+  },
+  "/Users/Patron/Desktop/SlimeDisplay/SlimeDisplay-mac/SlimeDisplay-mac/Core/SDManager.swift" : {
+    "const-values" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.swiftconstvalues",
+    "dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.d",
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.dia",
+    "index-unit-output-path" : "/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.o",
+    "llvm-bc" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.bc",
+    "object" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.o",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager.swiftdeps",
+    "swiftmodule" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SDManager~partial.swiftmodule"
+  },
+  "/Users/Patron/Desktop/SlimeDisplay/SlimeDisplay-mac/SlimeDisplay-mac/Display/VirtualDisplayManager.swift" : {
+    "const-values" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.swiftconstvalues",
+    "dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.d",
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.dia",
+    "index-unit-output-path" : "/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.o",
+    "llvm-bc" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.bc",
+    "object" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.o",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager.swiftdeps",
+    "swiftmodule" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VirtualDisplayManager~partial.swiftmodule"
+  },
+  "/Users/Patron/Desktop/SlimeDisplay/SlimeDisplay-mac/SlimeDisplay-mac/Encoder/VideoEncoder.swift" : {
+    "const-values" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.swiftconstvalues",
+    "dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.d",
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.dia",
+    "index-unit-output-path" : "/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.o",
+    "llvm-bc" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.bc",
+    "object" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.o",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder.swiftdeps",
+    "swiftmodule" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/VideoEncoder~partial.swiftmodule"
+  },
+  "/Users/Patron/Desktop/SlimeDisplay/SlimeDisplay-mac/Tests/SlimeDisplayMacRunner.swift" : {
+    "const-values" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.swiftconstvalues",
+    "dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.d",
+    "diagnostics" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.dia",
+    "index-unit-output-path" : "/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.o",
+    "llvm-bc" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.bc",
+    "object" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.o",
+    "swift-dependencies" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner.swiftdeps",
+    "swiftmodule" : "/Users/Patron/Desktop/SlimeDisplay/build/Build/Intermediates.noindex/SlimeDisplay-mac.build/Debug/SlimeDisplayMacRunner.build/Objects-normal/arm64/SlimeDisplayMacRunner~partial.swiftmodule"
+  }
+}

@@ -11,12 +11,29 @@
     ],
   },
   "files": [
-    { "kind": "folder", "path": "SlimeDisplay-mac", "target-membership": [ "SlimeDisplay-mac" ] },
+    {
+      "kind": "folder",
+      "path": "SlimeDisplay-mac",
+      "target-membership": [
+        "SlimeDisplay-mac",
+        "SlimeDisplayMacRunner",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "SlimeDisplayMacRunner",
+          "exclusions": [
+            "API/SDAPI.mm",
+          ],
+        },
+      ],
+    },
+    { "kind": "folder", "path": "Tests", "target-membership": [ "SlimeDisplayMacRunner" ] },
     {
       "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/SlimeDisplay_mac.framework", "id": "319181AF30B3E8F20063DA5E", "type": "wrapper.framework", "index": false },
+        { "path": "<PRODUCTS>/SlimeDisplayMacRunner.app", "id": "A1B2C3D530B3E8F20063DA5E", "type": "wrapper.application", "index": false },
       ],
     },
   ],
@@ -61,6 +78,28 @@
         "SWIFT_INSTALL_MODULE": "YES",
         "SWIFT_INSTALL_OBJC_HEADER": "NO",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
+        "SWIFT_VERSION": "5.0",
+      },
+    }, {
+      "name": "SlimeDisplayMacRunner",
+      "id": "A1B2C3D430B3E8F20063DA5E",
+      "product": "Products/SlimeDisplayMacRunner.app",
+      "product-type": "application",
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
+      "build-settings": {
+        "CODE_SIGN_STYLE": "Automatic",
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+        "MACOSX_DEPLOYMENT_TARGET": "26.6",
+        "PRODUCT_BUNDLE_IDENTIFIER": "kcu.SlimeDisplayMacRunner",
+        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+        "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_INSTALL_OBJC_HEADER": "NO",
         "SWIFT_VERSION": "5.0",
       },
     },

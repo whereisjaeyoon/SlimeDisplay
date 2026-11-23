@@ -14,6 +14,7 @@ SlimeDisplay-mac/
 │   ├── Capture/      # ScreenCaptureKit 화면 캡처
 │   ├── Encoder/      # VideoToolbox H.264 인코딩
 │   └── Adapters/     # 가상 디스플레이 Objective-C++ shim
+├── Tests/            # Xcode에서 실행 가능한 테스트 앱
 └── SlimeDisplay-mac.xcodeproj/
 ```
 
@@ -66,3 +67,18 @@ xcodebuild \
 ```
 
 이 빌드는 프레임워크 컴파일을 확인합니다. 가상 디스플레이 생성과 화면 캡처 권한을 포함한 실제 동작은 macOS 환경에서 별도로 실행해 검증해야 합니다.
+
+## Xcode에서 실행
+
+`SlimeDisplay-mac/SlimeDisplay-mac.xcodeproj`를 Xcode에서 열고 scheme을 `SlimeDisplayMacRunner`로 선택한 다음 **Run**을 누릅니다. 테스트 앱에서 가상 디스플레이를 생성하고 캡처 및 H.264 인코딩을 시작하거나 중지할 수 있습니다. 처음 화면 캡처를 시작할 때 macOS가 화면 기록 권한을 요청할 수 있습니다.
+
+명령줄에서도 실행 파일을 빌드할 수 있습니다.
+
+```sh
+xcodebuild \
+  -project SlimeDisplay-mac/SlimeDisplay-mac.xcodeproj \
+  -scheme SlimeDisplayMacRunner \
+  -configuration Debug \
+  build \
+  CODE_SIGNING_ALLOWED=NO
+```
