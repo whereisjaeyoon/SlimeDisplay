@@ -3,15 +3,25 @@ import VideoToolbox
 import CoreMedia
 import CoreVideo
 
+struct H264CodecConfiguration: Equatable {
+    let sps: Data
+    let pps: Data
+    let nalUnitHeaderLength: Int32
+}
+
+struct H264EncodedFrame {
+    let data: Data
+    let presentationTime: CMTime
+    let isKeyframe: Bool
+    let codecConfiguration: H264CodecConfiguration
+}
+
 final class VideoEncoder {
 
     private var session: VTCompressionSession?
+    private var codecConfiguration: H264CodecConfiguration?
 
-    var onEncodedFrame: ((
-        Data,
-        CMTime,
-        Bool
-    ) -> Void)?
+    var onEncodedFrame: ((H264EncodedFrame) -> Void)?
 
     func start(
         width: Int,
@@ -22,6 +32,7 @@ final class VideoEncoder {
         guard session == nil else {
             throw SDError.invalidState
         }
+        codecConfiguration = nil
 
         let callback: VTCompressionOutputCallback = {
             refcon,
@@ -148,6 +159,13 @@ final class VideoEncoder {
             count: totalLength
         )
 
+        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let codecConfiguration = extractCodecConfiguration(from: formatDescription) else {
+            NSLog("[SlimeDisplay] Unable to read H.264 codec configuration")
+            return
+        }
+        self.codecConfiguration = codecConfiguration
+
         let attachments = CMSampleBufferGetSampleAttachmentsArray(
             sampleBuffer,
             createIfNecessary: false
@@ -159,9 +177,54 @@ final class VideoEncoder {
         )
 
         onEncodedFrame?(
-            data,
-            CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
-            isKeyframe
+            H264EncodedFrame(
+                data: data,
+                presentationTime: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+                isKeyframe: isKeyframe,
+                codecConfiguration: codecConfiguration
+            )
+        )
+    }
+
+    private func extractCodecConfiguration(
+        from formatDescription: CMFormatDescription
+    ) -> H264CodecConfiguration? {
+        var spsPointer: UnsafePointer<UInt8>?
+        var spsSize = 0
+        var parameterSetCount = 0
+        var nalUnitHeaderLength: Int32 = 0
+
+        guard CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+            formatDescription,
+            parameterSetIndex: 0,
+            parameterSetPointerOut: &spsPointer,
+            parameterSetSizeOut: &spsSize,
+            parameterSetCountOut: &parameterSetCount,
+            nalUnitHeaderLengthOut: &nalUnitHeaderLength
+        ) == noErr,
+              parameterSetCount >= 2,
+              let spsPointer else {
+            return nil
+        }
+
+        var ppsPointer: UnsafePointer<UInt8>?
+        var ppsSize = 0
+        guard CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+            formatDescription,
+            parameterSetIndex: 1,
+            parameterSetPointerOut: &ppsPointer,
+            parameterSetSizeOut: &ppsSize,
+            parameterSetCountOut: nil,
+            nalUnitHeaderLengthOut: nil
+        ) == noErr,
+              let ppsPointer else {
+            return nil
+        }
+
+        return H264CodecConfiguration(
+            sps: Data(bytes: spsPointer, count: spsSize),
+            pps: Data(bytes: ppsPointer, count: ppsSize),
+            nalUnitHeaderLength: nalUnitHeaderLength
         )
     }
 
@@ -175,5 +238,6 @@ final class VideoEncoder {
 
         VTCompressionSessionInvalidate(session)
         self.session = nil
+        codecConfiguration = nil
     }
 }

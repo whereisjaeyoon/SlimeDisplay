@@ -2,6 +2,8 @@
 
 macOS 프레임워크 구현 문서입니다. 소스는 `SlimeDisplay-mac/` 아래에 있으며, 현재 가상 디스플레이 생성, 화면 캡처 및 H.264 인코딩을 연결하는 초기 백엔드 단계입니다.
 
+상세한 구성 요소 역할, 프레임 처리 흐름, 테스트 앱 실행 및 현재 한계는 [guide.md](./guide.md)를 참고하세요.
+
 ## 소스 구성
 
 ```text
@@ -35,7 +37,10 @@ SDManagerBridge / SDManager
    |
    `--> VideoEncoder
            `--> VideoToolbox (H.264)
-                  `--> 인코딩 바이트, PTS, 키프레임 여부 콜백
+                  `--> H.264 바이트 + 코덱 설정 + PTS + 키프레임 여부
+                         |
+                         `--> 테스트 클라이언트 VideoToolbox 디코더
+                                `--> 디코딩된 프레임을 미리보기 창에 표시
 ```
 
 ## 구현된 동작
@@ -45,7 +50,9 @@ SDManagerBridge / SDManager
 - ScreenCaptureKit은 지정된 디스플레이 ID를 찾아 캡처합니다. 캡처 출력은 BGRA 포맷이며, 요청된 FPS에 맞춘 프레임 간격과 3개 프레임의 큐 깊이를 사용합니다.
 - VideoToolbox는 실시간 H.264 인코딩 세션을 만들고 프레임 재정렬을 비활성화합니다. 결과 콜백은 인코딩된 데이터, presentation timestamp(PTS), 키프레임 여부를 전달합니다.
 - `SDManager`는 디스플레이, 캡처 및 인코더의 수명주기를 조정합니다. `SDAPI.mm`은 공개 C 함수를 Objective-C/Swift 브리지에 연결합니다.
-- 테스트 앱에서 캡처 중 **캡처 이미지 저장**을 누르면 다음 화면 프레임을 PNG로 변환해 저장 위치를 선택할 수 있습니다.
+- 테스트 앱은 캡처된 원시 픽셀을 UI에 전달하지 않습니다. 인코더가 만든 H.264 데이터와 타임스탬프, 키프레임 표시 및 디코더 초기화용 SPS/PPS를 테스트 클라이언트 디코더에 전달합니다.
+- 테스트 클라이언트는 `VTDecompressionSession`으로 H.264 프레임을 디코딩한 뒤 **가상 디스플레이 스트림** 창에 표시합니다. **디코딩 이미지 저장**도 이 디코더가 출력한 화면을 PNG로 저장합니다.
+- 이 과정은 실제 Host 인코딩 → Client 디코딩 흐름을 로컬에서 검증합니다. WebRTC, 네트워크 전송 및 별도 프로세스 간 전송은 아직 포함하지 않습니다.
 
 ## 현재 범위와 주의사항
 
@@ -71,7 +78,7 @@ xcodebuild \
 
 ## Xcode에서 실행
 
-`SlimeDisplay-mac/SlimeDisplay-mac.xcodeproj`를 Xcode에서 열고 scheme을 `SlimeDisplayMacRunner`로 선택한 다음 **Run**을 누릅니다. 테스트 앱에서 가상 디스플레이를 생성하고 캡처 및 H.264 인코딩을 시작하거나 중지할 수 있습니다. 처음 화면 캡처를 시작할 때 macOS가 화면 기록 권한을 요청할 수 있습니다.
+`SlimeDisplay-mac/SlimeDisplay-mac.xcodeproj`를 Xcode에서 열고 scheme을 `SlimeDisplayMacRunner`로 선택한 다음 **Run**을 누릅니다. 테스트 앱에서 가상 디스플레이를 생성하고 캡처를 시작하면 H.264 테스트 디코더가 연결된 스트림 창이 열립니다. 처음 화면 캡처를 시작할 때 macOS가 화면 기록 권한을 요청할 수 있습니다.
 
 명령줄에서도 실행 파일을 빌드할 수 있습니다.
 
