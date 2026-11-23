@@ -1,5 +1,5 @@
 #import "SDAPI.h"
-#import "SlimeDisplay_mac-Swift.h"
+#import "SlimeDisplay_mac_core-Swift.h"
 
 #include <new>
 

@@ -13,9 +13,9 @@
   "files": [
     {
       "kind": "folder",
-      "path": "SlimeDisplay-mac",
+      "path": "SlimeDisplay-mac-core",
       "target-membership": [
-        "SlimeDisplay-mac",
+        "SlimeDisplay-mac-core",
         "SlimeDisplayMacRunner",
       ],
       "membership-exceptions": [
@@ -32,16 +32,16 @@
       "kind": "group",
       "name": "Products",
       "children": [
-        { "path": "<PRODUCTS>/SlimeDisplay_mac.framework", "id": "319181AF30B3E8F20063DA5E", "type": "wrapper.framework", "index": false },
+        { "path": "<PRODUCTS>/SlimeDisplay_mac_core.framework", "id": "319181AF30B3E8F20063DA5E", "type": "wrapper.framework", "index": false },
         { "path": "<PRODUCTS>/SlimeDisplayMacRunner.app", "id": "A1B2C3D530B3E8F20063DA5E", "type": "wrapper.application", "index": false },
       ],
     },
   ],
   "targets": [
     {
-      "name": "SlimeDisplay-mac",
+      "name": "SlimeDisplay-mac-core",
       "id": "319181AE30B3E8F20063DA5E",
-      "product": "Products/SlimeDisplay_mac.framework",
+      "product": "Products/SlimeDisplay_mac_core.framework",
       "product-type": "framework",
       "build-phases": [
         "headers",
