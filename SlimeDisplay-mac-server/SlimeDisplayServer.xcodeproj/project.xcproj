@@ -11,24 +11,27 @@
     ],
   },
   "files": [
-    { "kind": "folder", "path": "SlimeDisplay-mac-server", "target-membership": [ "SlimeDisplay-mac-server" ] },
+    { "kind": "folder", "path": "SlimeDisplayServer", "target-membership": [ "SlimeDisplayServer" ] },
+    { "kind": "folder", "path": "SlimeDisplayServer/Resources", "target-membership": [ "SlimeDisplayServer" ] },
+    { "kind": "folder", "path": "Tests", "target-membership": [ "SlimeDisplayServer" ] },
     {
       "kind": "group",
       "name": "Products",
       "children": [
-        { "path": "<PRODUCTS>/SlimeDisplay-mac-server", "id": "3191828B30B424EF0063DA5E", "type": "compiled.mach-o.executable", "index": false },
+        { "path": "<PRODUCTS>/SlimeDisplayServer", "id": "3191828B30B424EF0063DA5E", "type": "compiled.mach-o.executable", "index": false },
       ],
     },
   ],
   "targets": [
     {
-      "name": "SlimeDisplay-mac-server",
+      "name": "SlimeDisplayServer",
       "id": "3191828A30B424EF0063DA5E",
-      "product": "Products/SlimeDisplay-mac-server",
+      "product": "Products/SlimeDisplayServer",
       "product-type": "tool",
       "build-phases": [
         "compile-sources",
         "frameworks",
+        "resources",
         {
           "kind": "copy",
           "name": "Copy Files",
@@ -38,6 +41,7 @@
       ],
       "build-settings": {
         "CODE_SIGN_STYLE": "Automatic",
+        "PRODUCT_BUNDLE_IDENTIFIER": "kcu.SlimeDisplayServer",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
