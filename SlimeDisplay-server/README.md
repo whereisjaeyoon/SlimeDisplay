@@ -1,215 +1,305 @@
-# SlimeDisplay Server – Technical Design Document
+# SlimeDisplay Server – Technical Design Document (Rust Edition)
 
 ## 1. Overview
 
 ### 1.1 Purpose
 
-SlimeDisplay Server is a cross-platform C++ application that manages virtual displays and streams their contents to remote client devices.
+SlimeDisplay Server is a cross-platform Rust application that manages virtual displays and streams their contents to remote client devices.
 
-The server runs on both Windows and macOS and uses the SlimeDisplay native library through a shared C ABI.
+The server runs on both Windows and macOS and uses the SlimeDisplay native library through a stable C ABI.
 
-The primary objectives are:
+Primary objectives:
 
-- Manage virtual display lifecycle.
-- Control screen capture and hardware video encoding.
-- Stream encoded video to remote clients using WebRTC.
-- Discover available devices through mDNS/DNS-SD.
-- Manage client connections and streaming sessions.
-- Provide a consistent API across Windows and macOS.
+- Manage virtual display lifecycle
+- Control screen capture and hardware video encoding
+- Stream encoded video to remote clients using WebRTC
+- Discover available devices through mDNS / DNS-SD
+- Manage client connections and streaming sessions
+- Provide a consistent API across Windows and macOS
 
 ### 1.2 System Architecture
 
 ```text
                     SlimeDisplay Server
-                 (Shared C++ Implementation)
+                 (Shared Rust Implementation)
                             |
              +--------------+--------------+
              |              |              |
-         REST API       WebSocket       WebRTC
+         REST API       WebSocket        WebRTC
              |          Signaling       Streaming
              |              |              |
              +--------------+--------------+
                             |
-                    SlimeDisplay C ABI
+                    SlimeDisplay C ABI (FFI)
                             |
               +-------------+-------------+
               |                           |
-          Windows                     macOS
+          Windows                      macOS
        SlimeDisplay.dll         SlimeDisplay.framework
               |                           |
-       Windows IDD              Native macOS APIs
+         Windows IDD              Native macOS APIs
               |                           |
-       Screen Capture            Screen Capture
-       Hardware Encoder          Hardware Encoder
+        Screen Capture              Screen Capture
+        Hardware Encoder            Hardware Encoder
 ```
 
-The C++ server is responsible for orchestration and communication. The SlimeDisplay library remains responsible for platform-specific display, capture, and encoding operations.
+The Rust server is responsible for orchestration and communication.
+
+The SlimeDisplay library is responsible for platform-specific virtual display, capture, and encoding operations.
+
+---
 
 ## 2. Technology Stack
 
 | Component | Technology |
 |---|---|
-| Language | C++20 |
-| Build System | CMake |
-| Compiler (Windows) | MSVC |
-| Compiler (macOS) | Apple Clang |
-| HTTP Server | Boost.Beast |
-| Asynchronous I/O | Boost.Asio |
-| WebSocket | Boost.Beast |
-| WebRTC | Google WebRTC Native API |
-| JSON | nlohmann/json |
-| Logging | spdlog |
-| Device Discovery | DNS-SD / mDNS |
+| Language | Rust (Edition 2021 / 2024) |
+| Build System | Cargo |
+| Async Runtime | Tokio |
+| HTTP Server | Axum |
+| WebSocket | Axum WebSocket |
+| WebRTC | webrtc-rs (or libwebrtc binding) |
+| Serialization | serde + serde_json |
+| Logging / Tracing | tracing + tracing-subscriber |
+| Device Discovery | mdns-sd |
+| FFI | bindgen |
 | Frontend | React + Vite |
 
 ### 2.1 Cross-platform Requirements
 
-The same C++ source code should compile on Windows and macOS.
+The same Rust source code must compile on both Windows and macOS.
 
-Platform-specific functionality must be isolated behind interfaces.
+Platform-specific functionality is isolated behind traits and conditional compilation (`#[cfg(target_os = "...")]`).
 
 ```text
 Windows:
-    C++ Server
+    Rust Server (Cargo)
        |
-    SlimeDisplay.dll
+    SlimeDisplay.dll (via FFI)
 
 macOS:
-    C++ Server
+    Rust Server (Cargo)
        |
-    SlimeDisplay.framework
+    SlimeDisplay.framework (via FFI)
 ```
 
 The server must not depend on Swift-specific APIs.
 
+The native library provides a consistent C ABI regardless of the underlying platform implementation.
+
+---
+
 ## 3. Project Structure
 
 ```text
-SlimeDisplayServer/
-├── CMakeLists.txt
-│
-├── include/
-│   ├── server/
-│   │   ├── Server.hpp
-│   │   └── ServerConfig.hpp
-│   │
-│   ├── api/
-│   │   ├── HttpServer.hpp
-│   │   └── WebSocketServer.hpp
-│   │
-│   ├── display/
-│   │   ├── DisplayService.hpp
-│   │   └── SlimeDisplayAdapter.hpp
-│   │
-│   ├── streaming/
-│   │   ├── StreamManager.hpp
-│   │   └── FrameBuffer.hpp
-│   │
-│   ├── webrtc/
-│   │   ├── PeerConnectionManager.hpp
-│   │   └── SignalingService.hpp
-│   │
-│   ├── discovery/
-│   │   └── IDnsService.hpp
-│   │
-│   └── security/
-│       └── AuthenticationService.hpp
+slime-display-server/
+├── Cargo.toml
+├── Cargo.lock
+├── build.rs                         # bindgen / platform-specific linking
 │
 ├── src/
-│   ├── main.cpp
+│   ├── main.rs
+│   ├── lib.rs
 │   │
 │   ├── api/
-│   │   ├── HttpServer.cpp
-│   │   └── WebSocketServer.cpp
+│   │   ├── mod.rs
+│   │   ├── http.rs                  # Axum routes
+│   │   └── websocket.rs             # Signaling WebSocket
 │   │
 │   ├── display/
-│   │   ├── DisplayService.cpp
-│   │   └── SlimeDisplayAdapter.cpp
+│   │   ├── mod.rs
+│   │   ├── service.rs               # DisplayService
+│   │   └── adapter.rs               # SlimeDisplay FFI adapter
 │   │
 │   ├── streaming/
-│   │   ├── StreamManager.cpp
-│   │   └── FrameBuffer.cpp
+│   │   ├── mod.rs
+│   │   ├── manager.rs               # StreamManager
+│   │   └── frame_buffer.rs
 │   │
 │   ├── webrtc/
-│   │   ├── PeerConnectionManager.cpp
-│   │   └── SignalingService.cpp
+│   │   ├── mod.rs
+│   │   ├── peer_connection.rs       # PeerConnectionManager
+│   │   └── signaling.rs
 │   │
 │   ├── discovery/
-│   │   └── DnsServiceFactory.cpp
+│   │   ├── mod.rs
+│   │   └── service.rs               # DnsService
 │   │
 │   ├── security/
-│   │   └── AuthenticationService.cpp
+│   │   ├── mod.rs
+│   │   └── auth.rs
 │   │
-│   └── platform/
-│       ├── windows/
-│       │   └── DnsServiceWindows.cpp
-│       │
-│       └── macos/
-│           └── DnsServiceMacOS.cpp
+│   ├── ffi/
+│   │   ├── mod.rs
+│   │   └── slimedisplay.rs          # Generated FFI bindings
+│   │
+│   └── config.rs
 │
-├── frontend/
-│   └── React + Vite Application
+├── frontend/                        # React + Vite application
 │
 └── tests/
-    ├── DisplayServiceTests.cpp
-    ├── StreamManagerTests.cpp
-    └── SignalingTests.cpp
+    ├── display_service_tests.rs
+    ├── stream_manager_tests.rs
+    └── signaling_tests.rs
 ```
 
-## 4. SlimeDisplay Library Integration
+---
+
+## 4. SlimeDisplay Library Integration (FFI)
 
 ### 4.1 C ABI Integration
 
 The server communicates with the native display library exclusively through the public C ABI.
 
-```cpp
-#include "slimedisplay.h"
+The public headers are:
+
+```text
+include/
+├── slimedisplay.h
+└── slimedisplay_types.h
 ```
 
-The server must not directly access Windows IDD internals or macOS Swift implementation details.
+- `slimedisplay_types.h`: Defines shared types, enums, structures, and the opaque handle.
+- `slimedisplay.h`: Defines exported API functions, callbacks, and platform-specific export macros.
 
-### 4.2 Display Lifecycle
+Rust bindings are generated using `bindgen` in `build.rs`.
 
-The server manages the display lifecycle through the following functions:
+The generated bindings must match the actual C declarations.
 
-| Operation | Library Function |
+The C API uses the following handle creation interface:
+
+```c
+SD_Result SD_CALL
+sd_create(SD_Handle** handle);
+```
+
+The handle is returned through an output parameter. The function itself returns an `SD_Result`, not a pointer.
+
+The corresponding Rust FFI declaration is:
+
+```rust
+unsafe extern "C" {
+    fn sd_create(handle: *mut *mut SD_Handle) -> SD_Result;
+
+    fn sd_destroy(handle: *mut SD_Handle);
+}
+```
+
+For manually maintained bindings, C structures and enums must use `#[repr(C)]` to preserve ABI compatibility.
+
+### 4.2 C ABI Type Mapping
+
+| C Type | Rust Type |
 |---|---|
-| Create instance | `sd_create()` |
-| Destroy instance | `sd_destroy()` |
-| Create virtual display | `sd_create_virtual_display()` |
-| Destroy virtual display | `sd_destroy_virtual_display()` |
-| Get display information | `sd_get_virtual_display_info()` |
+| `SD_Handle*` | `*mut SD_Handle` |
+| `SD_Handle**` | `*mut *mut SD_Handle` |
+| `SD_Result` | `SD_Result` |
+| `SD_DisplayConfig` | `SD_DisplayConfig` |
+| `SD_DisplayInfo` | `SD_DisplayInfo` |
+| `SD_PixelFormat` | `SD_PixelFormat` |
+| `uint8_t` | `u8` |
+| `uint32_t` | `u32` |
+| `uint64_t` | `u64` |
+| `int32_t` | `i32` |
+| `int64_t` | `i64` |
+| `void*` | `*mut std::ffi::c_void` |
 
-### 4.3 Capture Lifecycle
+`SD_Handle` is an opaque type. Its internal implementation must not be accessed directly by Rust.
 
-The server controls capture using:
+### 4.3 Public C ABI Functions
 
-- `sd_start_capture()`
-- `sd_stop_capture()`
+The following table represents the currently implemented public C API.
 
-### 4.4 Encoder Lifecycle
+| Operation | C ABI Function | Return Type |
+|---|---|---|
+| Create instance | `sd_create()` | `SD_Result` |
+| Destroy instance | `sd_destroy()` | `void` |
+| Create virtual display | `sd_create_virtual_display()` | `SD_Result` |
+| Destroy virtual display | `sd_destroy_virtual_display()` | `SD_Result` |
+| Get display information | `sd_get_virtual_display_info()` | `SD_Result` |
+| Start capture | `sd_start_capture()` | `SD_Result` |
+| Stop capture | `sd_stop_capture()` | `SD_Result` |
+| Start encoder | `sd_start_encoder()` | `SD_Result` |
+| Stop encoder | `sd_stop_encoder()` | `SD_Result` |
+| Register frame callback | `sd_set_encoded_frame_callback()` | `SD_Result` |
+| Get library version | `sd_get_version()` | `uint32_t` |
 
-The server controls the encoder using:
+### 4.4 Result Codes
 
-- `sd_start_encoder()`
-- `sd_stop_encoder()`
+The C ABI defines the following result codes:
 
-### 4.5 Encoded Frame Callback
+| Result | Value | Description |
+|---|---:|---|
+| `SD_SUCCESS` | 0 | Operation successful |
+| `SD_ERROR_INVALID_ARGUMENT` | -1 | Invalid argument |
+| `SD_ERROR_INITIALIZATION` | -2 | Initialization failed |
+| `SD_ERROR_NOT_SUPPORTED` | -3 | Operation not supported |
+| `SD_ERROR_PERMISSION_DENIED` | -4 | Permission denied |
+| `SD_ERROR_CAPTURE` | -5 | Capture failure |
+| `SD_ERROR_ENCODING` | -6 | Encoding failure |
+| `SD_ERROR_TRANSPORT` | -7 | Transport failure |
+| `SD_ERROR_INVALID_STATE` | -8 | Invalid lifecycle state |
+| `SD_ERROR_INTERNAL` | -9 | Internal error |
 
-The server registers an encoded-frame callback:
+All functions returning `SD_Result` must have their return values checked.
 
-```cpp
-sd_set_encoded_frame_callback(
-    handle,
-    on_encoded_frame,
-    user_data
-);
+The Rust adapter should convert native result codes into Rust `Result<T, E>` values.
+
+### 4.5 Display Configuration and Information
+
+The C ABI defines two separate structures.
+
+Display creation configuration:
+
+```c
+typedef struct {
+    uint32_t width;
+    uint32_t height;
+    uint32_t fps;
+} SD_DisplayConfig;
 ```
 
-Callback signature:
+Virtual display information:
 
-```cpp
-void on_encoded_frame(
+```c
+typedef struct {
+    uint64_t id;
+    uint32_t width;
+    uint32_t height;
+    uint32_t refresh_rate;
+} SD_DisplayInfo;
+```
+
+`SD_DisplayConfig` is passed to `sd_create_virtual_display()`.
+
+`SD_DisplayInfo` is populated by `sd_get_virtual_display_info()`.
+
+The requested FPS and the actual display refresh rate are separate properties and must not be treated as interchangeable.
+
+### 4.6 Display Lifecycle
+
+The native library exposes the following lifecycle operations:
+
+1. `sd_create()` initializes the library instance and returns an opaque handle.
+2. `sd_create_virtual_display()` creates a virtual display using `SD_DisplayConfig`.
+3. `sd_get_virtual_display_info()` retrieves the created display information.
+4. `sd_start_capture()` starts screen capture.
+5. `sd_start_encoder()` starts video encoding.
+6. `sd_stop_encoder()` stops encoding.
+7. `sd_stop_capture()` stops screen capture.
+8. `sd_destroy_virtual_display()` destroys the virtual display.
+9. `sd_destroy()` releases the library handle.
+
+Each operation must be checked for its corresponding `SD_Result`.
+
+### 4.7 Encoded Frame Callback
+
+The C ABI provides a callback for receiving encoded video frames.
+
+Actual C declaration:
+
+```c
+typedef void (*SD_EncodedFrameCallback)(
     const uint8_t* data,
     uint32_t size,
     int64_t presentation_time,
@@ -218,29 +308,83 @@ void on_encoded_frame(
 );
 ```
 
-The callback provides:
+The callback is registered through:
 
-| Field | Description |
+```c
+SD_Result SD_CALL
+sd_set_encoded_frame_callback(
+    SD_Handle* handle,
+    SD_EncodedFrameCallback callback,
+    void* user_data
+);
+```
+
+Corresponding Rust callback type:
+
+```rust
+type EncodedFrameCallback = Option<
+    unsafe extern "C" fn(
+        data: *const u8,
+        size: u32,
+        presentation_time: i64,
+        is_keyframe: i32,
+        user_data: *mut std::ffi::c_void,
+    ),
+>;
+```
+
+The callback registration function must use the same signature as the C ABI.
+
+The callback receives:
+
+| Parameter | Description |
 |---|---|
-| `data` | Encoded video frame data |
+| `data` | Pointer to encoded frame data |
 | `size` | Encoded frame size in bytes |
 | `presentation_time` | Presentation timestamp |
-| `is_keyframe` | Whether the frame is a keyframe |
-| `user_data` | User-defined context |
+| `is_keyframe` | Keyframe indicator |
+| `user_data` | User-provided context pointer |
 
-The callback should perform minimal work.
+The existing `SD_FrameInfo` structure is not currently passed to this callback.
 
-Recommended processing:
+**Critical safety rules:**
 
-1. Receive the encoded frame.
-2. Copy or transfer the data into an owned frame buffer.
-3. Attach timestamp and keyframe metadata.
-4. Submit the frame to the streaming pipeline.
+- The callback may execute on an internal encoder thread.
+- Treat `data` as borrowed memory.
+- Always copy frame data into an owned buffer before returning from the callback.
+- Never perform blocking network I/O inside the callback.
+- Avoid long-held locks.
+- Use a thread-safe channel to forward frames to the streaming pipeline.
+- Ensure that the `user_data` context remains valid throughout all callback executions.
+- Synchronize callback shutdown before releasing the associated context or library handle.
+
+Recommended processing flow:
+
+1. Receive encoded frame.
+2. Copy data into an owned buffer.
+3. Attach presentation timestamp and keyframe metadata.
+4. Send the frame through a channel.
 5. Return immediately.
 
-**Memory ownership requirement:** The callback does not specify ownership or lifetime of `data`. The server must treat the pointer as borrowed memory and copy it before the callback returns unless the library explicitly guarantees a longer lifetime.
+Callback unregistration must be supported and documented by the native library. If passing `NULL` to the callback parameter is used for unregistration, the native implementation must explicitly guarantee that behavior.
 
-The callback may execute on an internal encoder thread. All shared state must be synchronized, and blocking network operations must not occur inside the callback.
+### 4.8 FFI Safety and Ownership
+
+The Rust adapter is responsible for safely managing the native library handle.
+
+Recommended ownership model:
+
+- `DisplayService` owns the native `SD_Handle`.
+- The handle is created once during server initialization.
+- Native operations are coordinated through `DisplayService`.
+- The callback context is owned by the streaming subsystem.
+- Callback context destruction is delayed until all in-flight callbacks have completed.
+
+Raw pointers must not be exposed to higher-level application modules.
+
+The native FFI layer should provide safe Rust abstractions around the C API.
+
+---
 
 ## 5. Server Modules
 
@@ -252,12 +396,12 @@ Responsibilities:
 
 - Initialize the SlimeDisplay handle.
 - Create and destroy virtual displays.
-- Retrieve display information.
-- Start and stop capture.
-- Start and stop encoding.
-- Register and unregister frame callbacks.
-
-The service must maintain a consistent lifecycle state.
+- Start and stop screen capture.
+- Start and stop video encoding.
+- Register and unregister encoded frame callbacks.
+- Retrieve virtual display information.
+- Maintain a consistent lifecycle state machine.
+- Convert native errors into Rust errors.
 
 Suggested states:
 
@@ -266,14 +410,16 @@ Uninitialized
       |
    Created
       |
-DisplayReady
+ DisplayReady
       |
   Capturing
       |
-   Encoding
+  Encoding
       |
    Stopped
 ```
+
+The state machine must prevent invalid native API calls.
 
 ### 5.2 StreamManager
 
@@ -281,18 +427,16 @@ Responsible for distributing encoded frames to active streaming sessions.
 
 Responsibilities:
 
-- Receive encoded frames.
-- Manage frame queues.
+- Receive encoded frames from the native callback pipeline.
+- Manage bounded frame queues.
 - Preserve presentation timestamps.
-- Handle keyframe delivery.
+- Track keyframe availability.
+- Ensure newly connected clients receive an appropriate keyframe.
 - Prevent unbounded buffering.
-- Distribute frames to WebRTC peers.
+- Prioritize low-latency frame delivery.
+- Fan out frames to WebRTC peers.
 
-The streaming pipeline should use bounded queues.
-
-If a client cannot consume frames quickly enough, the server should prioritize low latency rather than allowing unlimited frame accumulation.
-
-The implementation must also ensure that clients joining an active stream receive an appropriate keyframe before dependent interframes.
+The streaming pipeline should use bounded channels to prevent excessive memory consumption.
 
 ### 5.3 PeerConnectionManager
 
@@ -305,19 +449,14 @@ Responsibilities:
 - Manage ICE candidates.
 - Add outgoing video tracks.
 - Handle connection state changes.
-- Remove disconnected peers.
+- Clean up disconnected peers.
+- Forward encoded video frames to the appropriate WebRTC video source.
 
-The server should support multiple clients through independent peer connections.
-
-The implementation must preserve the encoded-frame timestamp and codec configuration when integrating the encoder output with the WebRTC video source.
-
-The actual WebRTC integration must verify compatibility between the SlimeDisplay encoder output and the selected WebRTC codec configuration.
+Supports multiple independent peer connections.
 
 ### 5.4 SignalingService
 
-Responsible for exchanging WebRTC signaling messages.
-
-Signaling is carried over WebSocket.
+Exchanges WebRTC signaling messages over WebSocket.
 
 Message types:
 
@@ -332,19 +471,17 @@ Example:
 
 ```json
 {
-  "type": "offer",
-  "session_id": "session-123",
-  "sdp": "..."
+    "type": "offer",
+    "session_id": "session-123",
+    "sdp": "..."
 }
 ```
 
-The signaling protocol must be independent of the underlying operating system.
+Signaling is independent of media transport.
 
 ### 5.5 DiscoveryService
 
-Responsible for advertising the SlimeDisplay Server and discovering other compatible devices.
-
-The service uses DNS-SD over mDNS.
+Advertises the server and discovers compatible devices using DNS-SD / mDNS.
 
 Suggested service type:
 
@@ -352,50 +489,35 @@ Suggested service type:
 _slimedisplay._tcp.local.
 ```
 
-Example service advertisement:
+Advertised information:
 
-```text
-Service Name: SlimeDisplay
-Service Type: _slimedisplay._tcp
-Port: 8080
-```
+- Device name
+- Control endpoint port
+- Protocol version
+- Optional capability metadata
 
-The advertised port represents the server's TCP control endpoint, not the mDNS port.
-
-mDNS uses UDP port 5353.
-
-The server should advertise:
-
-- Device name.
-- Service type.
-- Control endpoint port.
-- Protocol version.
-- Optional capability metadata.
-
-mDNS discovery is intended for local-network discovery. It does not replace WebRTC ICE connectivity checks.
+Discovery must not expose reusable authentication credentials.
 
 ### 5.6 AuthenticationService
 
-Responsible for client authentication and session authorization.
+Handles client authentication and session authorization.
 
 Requirements:
 
 - Generate a unique server identity.
-- Authenticate clients before creating privileged sessions.
+- Authenticate clients before privileged operations.
 - Validate session ownership.
 - Prevent unauthorized display control.
 - Avoid exposing reusable credentials in discovery records.
 
-Device discovery should not automatically grant access to the display.
+---
 
 ## 6. Network Architecture
-
-The server uses separate communication channels for control, signaling, and media.
 
 | Channel | Protocol | Purpose |
 |---|---|---|
 | Discovery | mDNS / DNS-SD | Find available servers |
-| Control API | HTTP | Display and session management |
+| Control API | HTTP (Axum) | Display and session management |
 | Signaling | WebSocket | WebRTC negotiation |
 | Media | WebRTC | Encoded video transmission |
 
@@ -414,190 +536,157 @@ Suggested endpoints:
 | POST | `/api/stream/stop` | Stop streaming |
 | GET | `/api/sessions` | List active sessions |
 
-All endpoints that modify display state must require authorization.
+These HTTP endpoints are server-level APIs. They are not direct C ABI functions.
+
+The Rust server translates HTTP requests into the corresponding SlimeDisplay library operations.
+
+All state-modifying endpoints require authorization.
 
 ### 6.2 WebSocket Signaling
 
-Suggested endpoint:
+Endpoint:
 
 ```text
 /ws/signaling
 ```
 
-The WebSocket connection is used only for signaling and control messages.
+Used for WebRTC signaling and session control messages.
 
-Video data must be transmitted through WebRTC rather than being sent as WebSocket binary messages.
+Video data must never be sent as WebSocket binary frames.
 
 ### 6.3 WebRTC Media
-
-The server acts as the WebRTC sender.
 
 ```text
 SlimeDisplay Encoder
         |
-Encoded Frames
+  Encoded Frames
         |
-WebRTC Video Source
+ Rust Frame Pipeline
         |
-RTP / SRTP
+ WebRTC Video Source
         |
-Client Decoder
+    RTP / SRTP
         |
-Video Rendering
+ Client Decoder
+        |
+    Rendering
 ```
 
-The server should support the codec configurations provided by the native encoder.
+H.264 is the recommended initial codec target.
 
-H.264 is a reasonable initial target because it is widely supported by browsers and native platforms.
+The encoded frames provided by the native library must be compatible with the WebRTC video source and negotiated codec configuration.
 
-The implementation must define how codec configuration, keyframes, timestamps, and frame boundaries are passed from the encoder to WebRTC.
+---
 
 ## 7. Cross-platform mDNS Implementation
 
-The discovery interface should remain platform-independent.
+The Rust server should use a cross-platform DNS-SD / mDNS abstraction.
 
-```cpp
-class IDnsService {
-public:
-    virtual ~IDnsService() = default;
+```rust
+#[async_trait]
+pub trait DnsService: Send + Sync {
+    async fn start_advertising(
+        &self,
+        name: &str,
+        port: u16,
+    ) -> Result<()>;
 
-    virtual bool startAdvertising(
-        const std::string& name,
-        uint16_t port
-    ) = 0;
+    async fn start_browsing(&self) -> Result<()>;
 
-    virtual bool startBrowsing() = 0;
-
-    virtual void stop() = 0;
-};
+    async fn stop(&self) -> Result<()>;
+}
 ```
-
-Platform implementations:
 
 | Platform | Implementation |
 |---|---|
-| macOS | Apple DNS-SD API (`dns_sd.h`) |
-| Windows | Bonjour SDK or a supported cross-platform DNS-SD implementation |
+| Windows | mdns-sd crate or Bonjour SDK |
+| macOS | mdns-sd crate or Apple DNS-SD API |
 
-On macOS, the C++ server can call Apple's DNS-SD API directly. A separate Swift module is not required.
+The discovery implementation must be isolated from the core server logic.
 
-On Windows, the project must select and package an appropriate DNS-SD implementation. Windows should not be assumed to provide Apple's Bonjour API by default.
-
-The discovery implementation should be isolated from the server's core logic.
+---
 
 ## 8. Platform-specific Build Configuration
 
 ### 8.1 macOS
 
-Development environment:
+Link against the SlimeDisplay framework and required system libraries in `build.rs`.
 
-- VS Code
-- Apple Clang
-- CMake
-- Ninja
-- Xcode Command Line Tools
-
-The server links against the macOS SlimeDisplay framework and the required Apple system libraries.
-
-Example CMake configuration:
-
-```cmake
-if(APPLE)
-    target_link_libraries(SlimeDisplayServer
-        PRIVATE
-        "-framework Foundation"
-        "-framework CoreFoundation"
-    )
-endif()
-```
-
-The exact framework and library dependencies must match the APIs used by the implementation.
+The framework must be available to the Rust application at runtime.
 
 ### 8.2 Windows
 
-Development environment:
+Link against `SlimeDisplay.dll` and its import library.
 
-- VS Code or Visual Studio
-- MSVC
-- CMake
-- Ninja
+Ensure the DLL is discoverable at runtime.
 
-The server links against the Windows SlimeDisplay DLL and its import library.
+The native library must export the functions declared in `slimedisplay.h`.
 
-Example:
-
-```cmake
-if(WIN32)
-    target_link_libraries(SlimeDisplayServer
-        PRIVATE
-        SlimeDisplay
-    )
-endif()
-```
-
-The runtime must be able to locate `SlimeDisplay.dll`.
-
-### 8.3 Shared Build System
-
-The project should use one CMake configuration.
+### 8.3 Shared Build
 
 ```bash
-cmake -S . -B build
-cmake --build build
+cargo build --release
 ```
 
-Platform-specific dependencies should be selected using CMake conditions.
+Platform-specific code is selected via `#[cfg]` attributes.
 
-The same application source code should be used on both platforms.
+The same Rust application source is used on both platforms.
+
+The native SlimeDisplay library is built separately for each target platform.
+
+---
 
 ## 9. Runtime Lifecycle
 
-The expected server startup sequence:
+### 9.1 Startup Sequence
 
-```text
-1. Initialize Logger
-2. Load Configuration
-3. Initialize SlimeDisplay Library
-4. Create SlimeDisplay Handle
-5. Start HTTP Server
-6. Start WebSocket Signaling Server
-7. Start mDNS Advertisement
-8. Wait for Client Connections
-```
+1. Initialize logger / tracing.
+2. Load configuration.
+3. Initialize SlimeDisplay library (FFI).
+4. Create SlimeDisplay handle using `sd_create()`.
+5. Initialize DisplayService.
+6. Start HTTP server (Axum).
+7. Start WebSocket signaling.
+8. Start mDNS advertisement.
+9. Wait for client connections.
 
-When a client requests a display session:
+The virtual display does not necessarily need to be created during server startup. It can be created when the first streaming session requests it.
 
-```text
-1. Authenticate Client
-2. Create Virtual Display (if not already created)
-3. Start Capture
-4. Start Encoder
-5. Register / activate Frame Callback
-6. Create WebRTC Peer Connection
-7. Negotiate SDP and ICE
-8. Begin Media Transmission
-```
+### 9.2 Client Session Sequence
 
-Shutdown sequence:
+1. Authenticate client.
+2. Create virtual display if needed using `sd_create_virtual_display()`.
+3. Retrieve display information using `sd_get_virtual_display_info()`.
+4. Start screen capture using `sd_start_capture()`.
+5. Register the encoded frame callback using `sd_set_encoded_frame_callback()`.
+6. Start the encoder using `sd_start_encoder()`.
+7. Create WebRTC peer connection.
+8. Negotiate SDP and ICE.
+9. Begin media transmission.
 
-```text
-1. Reject New Sessions
-2. Close WebRTC Peer Connections
-3. Stop Frame Delivery
-4. Unregister Frame Callback
-5. Stop Encoder
-6. Stop Capture
-7. Destroy Virtual Display
-8. Destroy SlimeDisplay Handle
-9. Stop mDNS Advertisement
-10. Stop HTTP and WebSocket Servers
-```
+The callback must be registered before starting the encoder to avoid losing initial encoded frames.
 
-The implementation must ensure callback shutdown is synchronized before destroying the underlying library handle.
+### 9.3 Shutdown Sequence
+
+1. Reject new sessions.
+2. Close WebRTC peer connections.
+3. Stop frame delivery to WebRTC peers.
+4. Stop the encoder using `sd_stop_encoder()`.
+5. Unregister the frame callback according to the native library's documented callback unregistration semantics.
+6. Wait for all in-flight callbacks to complete.
+7. Stop screen capture using `sd_stop_capture()`.
+8. Destroy the virtual display using `sd_destroy_virtual_display()`.
+9. Destroy the SlimeDisplay handle using `sd_destroy()`.
+10. Stop mDNS advertisement.
+11. Stop HTTP and WebSocket servers.
+
+Callback shutdown must be synchronized before destroying the callback context or library handle.
+
+The native library must guarantee that no callback can access released memory after callback shutdown completes.
+
+---
 
 ## 10. Performance Requirements
-
-The initial target is:
 
 | Metric | Initial Target |
 |---|---|
@@ -606,83 +695,132 @@ The initial target is:
 | Video Codec | H.264 |
 | Encoding | Hardware accelerated |
 | Transport | WebRTC |
-| Client Count | Initially one client |
+| Client Count | Initially 1 |
 | Frame Buffering | Bounded |
 | Streaming Priority | Low latency |
 
-The architecture should allow future support for:
+Future targets:
 
-- 2560 × 1440
-- 3840 × 2160
+- 1440p / 4K
 - 120 FPS
 - Multiple simultaneous clients
 
-Performance testing should measure:
+Key metrics to measure:
 
-- Capture-to-encode latency.
-- Encoder processing time.
-- Network transmission latency.
-- Client decoding time.
-- Render presentation latency.
-- Frame drops.
-- End-to-end glass-to-glass latency.
+- Capture-to-encode latency
+- Encoder processing time
+- Network transmission latency
+- End-to-end glass-to-glass latency
+- Frame drops
+- Frame queue depth
+- CPU and GPU utilization
+
+---
 
 ## 11. Important Design Constraints
 
 ### 11.1 Separate Display and Server Responsibilities
 
-The server must not implement virtual display creation or screen capture itself.
+Virtual display creation, screen capture, and hardware encoding belong to the SlimeDisplay native library.
 
-These operations belong to the SlimeDisplay library.
+The Rust server handles orchestration and network communication.
 
 ### 11.2 Separate Signaling and Media Transport
 
-WebSocket is used for signaling.
-
-WebRTC is used for video transmission.
+- WebSocket: Signaling only.
+- WebRTC: Video transmission.
 
 ### 11.3 Keep Platform Dependencies Isolated
 
-The core server must not contain direct dependencies on Windows IDD or macOS-specific display implementation details.
+Core server code must not contain direct Windows IDD or macOS display implementation details.
+
+All platform-specific functionality must be accessed through the SlimeDisplay C ABI.
 
 ### 11.4 Callback Safety
 
-Encoded frame callbacks must not block on network transmission.
+Encoded-frame callbacks must not perform blocking operations.
 
-Frame memory must remain valid throughout the processing pipeline.
+Frame memory must be copied into an owned buffer before the callback returns.
+
+Callback context must remain valid until all callback executions have completed.
 
 ### 11.5 Client Independence
 
 The server must not depend on a specific client implementation.
 
-A web client and a native client should be able to connect using the same signaling and media protocols.
+Web and native clients should work with the same network protocols.
 
-## 12. Development Strategy
+### 11.6 C ABI Compatibility
+
+The Rust FFI layer must always match the actual public C headers.
+
+Changes to C structures, enums, function signatures, or callback definitions must be reflected in the generated bindings.
+
+The public ABI should remain stable across library versions whenever possible.
+
+---
+
+## 12. Future C ABI Extensions
+
+The current public C ABI provides basic virtual display, capture, encoder lifecycle, and encoded-frame callback functionality.
+
+It does not currently expose detailed encoder configuration.
+
+Potential future extensions include:
+
+- Codec selection (H.264 / HEVC / AV1)
+- Bitrate configuration
+- Encoding resolution
+- Target frame rate
+- Keyframe interval
+- Encoder profile and level
+- Requesting an immediate keyframe
+- Encoder capability queries
+
+These features should be introduced through additional public C ABI functions rather than accessing platform-specific encoder internals from Rust.
+
+For example, a future API could introduce:
+
+```c
+typedef enum {
+    SD_CODEC_UNKNOWN = 0,
+    SD_CODEC_H264 = 1,
+    SD_CODEC_HEVC = 2,
+    SD_CODEC_AV1 = 3
+} SD_Codec;
+```
+
+This is a proposed extension and is not part of the current public ABI.
+
+---
+
+## 13. Development Strategy
 
 Recommended implementation order:
 
-1. Create the cross-platform CMake project.
-2. Integrate the SlimeDisplay C ABI.
-3. Implement DisplayService.
-4. Implement the encoded-frame callback pipeline.
-5. Implement HTTP and WebSocket servers.
-6. Integrate WebRTC media transmission.
-7. Implement mDNS service advertisement and discovery.
-8. Implement authentication and session management.
-9. Build the React web client.
-10. Test on Windows and macOS.
-11. Optimize latency and frame delivery.
+1. Create the cross-platform Cargo project.
+2. Integrate the SlimeDisplay C ABI (FFI + bindgen).
+3. Implement the native handle lifecycle.
+4. Implement DisplayService.
+5. Implement the encoded-frame callback pipeline.
+6. Implement HTTP + WebSocket servers (Axum).
+7. Integrate WebRTC media transmission.
+8. Implement mDNS service advertisement / discovery.
+9. Implement authentication and session management.
+10. Build the React web client.
+11. Test on Windows and macOS.
+12. Optimize latency and frame delivery.
 
-The first milestone should be a single-client FHD 60 FPS streaming session.
+**First milestone:** Single-client Full HD 60 FPS streaming session.
 
 ---
 
 ## Final Architecture Decision
 
-**Shared C++ Server + Platform-specific SlimeDisplay Library + WebRTC Client**
+**Shared Rust Server + Platform-specific SlimeDisplay Library + WebRTC Client**
 
-The server is implemented once in C++ and compiled separately for Windows and macOS.
-
-The SlimeDisplay library handles platform-specific display, capture, and encoding operations through a stable C ABI.
-
-The client remains independent of the server implementation and can be developed as either a web application or a native application.
+- The server is implemented once in Rust and compiled separately for Windows and macOS.
+- The SlimeDisplay native library handles platform-specific virtual display, capture, and encoding operations through a stable C ABI.
+- The Rust server manages application lifecycle, networking, signaling, and streaming sessions.
+- Encoded video frames are delivered to Rust through the native callback interface.
+- Clients remain independent of the server implementation and can be developed as web applications or native applications.

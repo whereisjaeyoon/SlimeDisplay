@@ -1,42 +1,42 @@
-# SlimeDisplay 설계 검토 이슈
+# SlimeDisplay Design Review Issues
 
-설계 문서(README) 검토 결과 정리. 전체 구조는 실현 가능하며, 아래 항목을 보완해야 한다.
+Summary of the design document (README) review. The overall design is feasible, but the following items need to be addressed.
 
-- **우선순위:** 🔴 필수(그대로 진행 시 동작하지 않거나 재설계 필요) / 🟡 보완 권장 / 🟢 참고
+- **Priority:** 🔴 Required (the design will not work as-is or needs redesign) / 🟡 Recommended improvement / 🟢 Informational
 
 ---
 
-## 확인된 사항
+## Confirmed Findings
 
-| 항목 | 결과 | 비고 |
+| Item | Finding | Notes |
 | :--- | :--- | :--- |
-| VDD 라이선스 | MIT | 재배포 시 라이선스 고지 포함 |
-| VDD 서명 | SignPath Foundation 인증서로 서명 | 소스 수정·자체 빌드 시 서명 유지 안 됨 |
-| VDD 설치 | Release 설치 프로그램, winget 지원 | `winget install --id=VirtualDrivers.Virtual-Display-Driver -e` |
-| VDD 설정 | `C:\VirtualDisplayDriver\vdd_settings.xml` | 해상도 추가/삭제는 이 파일로 관리 |
-| macOS `CGVirtualDisplay` | Private API | Mac App Store 배포 불가. DeskPad/BetterDisplay처럼 직접 배포(공증) 방식 |
+| VDD license | MIT | Include the license notice when redistributing |
+| VDD signing | Signed with a SignPath Foundation certificate | Changes to the source or a self-built driver will not retain this signature |
+| VDD installation | Release installer; winget supported | `winget install --id=VirtualDrivers.Virtual-Display-Driver -e` |
+| VDD settings | `C:\VirtualDisplayDriver\vdd_settings.xml` | Add or remove resolutions through this file |
+| macOS `CGVirtualDisplay` | Private API | Not suitable for Mac App Store distribution; use direct distribution and notarization, as DeskPad and BetterDisplay do |
 
 ---
 
-## 🔴 필수
+## 🔴 Required
 
-### #1 H.264 레벨 협상
+### #1 H.264 Level Negotiation
 
-- **문제:** Safari는 보통 `profile-level-id=42e01f`(Level 3.1, 약 720p)로 협상한다. 목표인 1080p60은 Level 4.2가 필요하다.
-- **영향:** 영상이 재생되지 않거나 저해상도로 제한될 수 있다.
-- **조치:**
-  - Host SDP에 `level-asymmetry-allowed=1` 추가
-  - 인코더 레벨을 4.2 이상(iPad 네이티브 해상도는 5.1~5.2)으로 설정
-  - B-프레임 비활성화, 키프레임마다 SPS/PPS 포함
-- **문서 위치:** 5.4 코덱
+- **Problem:** Safari commonly negotiates `profile-level-id=42e01f` (Level 3.1, approximately 720p), while the target of 1080p60 requires Level 4.2.
+- **Impact:** Video may fail to play or may be limited to a lower resolution.
+- **Actions:**
+  - Add `level-asymmetry-allowed=1` to the Host SDP.
+  - Set the encoder level to 4.2 or higher (5.1–5.2 for native iPad resolutions).
+  - Disable B-frames and include SPS/PPS with every keyframe.
+- **Document sections:** 5.4 Codec
 
-### #2 Web Client 예시 코드가 iOS Safari에서 동작하지 않음
+### #2 The Web Client Example Does Not Work in iOS Safari
 
-- **문제:**
-  - `<video>`에 `autoplay playsinline muted`가 없으면 iOS에서 `play()`가 거부된다.
-  - Host가 msid를 보내지 않으면 `event.streams[0]`이 `undefined`다.
-  - 5.3처럼 브라우저가 Offerer인데 수신 트랜시버가 없어 비디오 m-line이 생성되지 않는다.
-- **조치:**
+- **Problems:**
+  - Without `autoplay playsinline muted` on `<video>`, iOS may reject `play()`.
+  - If the Host does not send an `msid`, `event.streams[0]` is `undefined`.
+  - As in section 5.3, when the browser is the offerer, no video m-line is created unless a receiving transceiver is added.
+- **Action:**
 
 ```html
 <video autoplay playsinline muted></video>
@@ -44,139 +44,139 @@
 
 ```typescript
 const pc = new RTCPeerConnection();
-pc.addTransceiver("video", { direction: "recvonly" }); // 브라우저가 Offerer일 때 필수
+pc.addTransceiver("video", { direction: "recvonly" }); // Required when the browser is the offerer.
 
 pc.ontrack = (e) => {
   const video = document.querySelector("video")!;
   video.srcObject = e.streams[0] ?? new MediaStream([e.track]);
   video.play().catch(() => {
-    // 자동 재생 실패 시 탭하여 재생 버튼 표시
+    // Show a play button if autoplay fails.
   });
 };
 ```
 
-- **문서 위치:** 5.3 연결 과정, 7.3 영상 수신 예시
+- **Document sections:** 5.3 Connection Flow, 7.3 Video Reception Example
 
-### #3 HTTPS/WSS 인증서 검증이 너무 늦음
+### #3 HTTPS/WSS Certificate Validation Happens Too Late
 
-- **문제:** iOS에서 Self-signed 인증서를 완전히 신뢰하려면 프로파일 설치 후 `설정 → 일반 → 정보 → 인증서 신뢰 설정`까지 거쳐야 한다. UX 부담이 크고, 실패 시 전체 설계가 바뀔 수 있다.
-- **조치:**
-  - 웹페이지와 WSS를 같은 origin(같은 호스트:포트)에서 제공
-  - 경고 화면 1회 통과만으로 페이지, WSS, WebRTC가 모두 동작하는지 실제 iPad Safari에서 확인
-  - 이 검증을 **Phase 2로 이동**
-- **문서 위치:** 6.3 인증서, 10 개발 단계
+- **Problem:** To fully trust a self-signed certificate on iOS, the user must install a profile and then go to **Settings → General → About → Certificate Trust Settings**. This creates significant UX friction, and failure may require redesigning the system.
+- **Actions:**
+  - Serve the webpage and WSS from the same origin (same host and port).
+  - Verify on a real iPad running Safari that the page, WSS, and WebRTC all work after accepting the warning once.
+  - Move this verification to **Phase 2**.
+- **Document sections:** 6.3 Certificates, 10 Development Phases
 
-### #4 Client 해상도 맞춤 부재
+### #4 No Client-Matched Resolution
 
-- **문제:** iPad는 4:3 비율인데 목표 해상도가 1920×1080으로 고정되어 있다. 확장 디스플레이로 쓰면 레터박스가 생기고 화면이 흐려진다.
-- **충돌:** 2.2에서 "VDD 설정 파일을 직접 수정하지 않는다"고 했지만, VDD 해상도 목록은 `vdd_settings.xml`로 관리된다.
-- **조치:**
-  - 설치 시 주요 Client 해상도(예: 2048×1536, 2360×1640, 2732×2048)를 `vdd_settings.xml`에 미리 등록
-  - 접속 시 Client가 `screen.width × devicePixelRatio` 기준 해상도를 전송
-  - Host는 `ChangeDisplaySettingsEx`로 가상 모니터 모드만 변경
-  - 해상도 맞춤을 **Phase 6 → Phase 4로 이동**
-- **문서 위치:** 2.2, 8 성능 설계, 10 개발 단계
+- **Problem:** iPad displays have a 4:3 aspect ratio, but the target resolution is fixed at 1920×1080. As an extended display this creates letterboxing and a blurry image.
+- **Conflict:** Section 2.2 says not to edit the VDD settings file directly, but VDD resolutions are managed in `vdd_settings.xml`.
+- **Actions:**
+  - Pre-register common Client resolutions (for example 2048×1536, 2360×1640, and 2732×2048) in `vdd_settings.xml` during installation.
+  - On connection, have the Client send a resolution based on `screen.width × devicePixelRatio`.
+  - Have the Host change only the virtual monitor mode with `ChangeDisplaySettingsEx`.
+  - Move resolution matching from **Phase 6 to Phase 4**.
+- **Document sections:** 2.2, 8 Performance Design, 10 Development Phases
 
-### #5 Host 핵심 기술 스택 미정
+### #5 Host Core Technology Stack Is Undecided
 
-- **문제:** Phase 2 시작 전 결정되어야 할 항목이 문서에 없다.
-- **결정 필요 항목:**
+- **Problem:** Decisions that must be made before Phase 2 are not documented.
+- **Decisions required:**
 
-| 항목 | 후보 | 권장 |
+| Item | Candidates | Recommendation |
 | :--- | :--- | :--- |
-| Host 언어 | C++ / Rust | Windows·macOS 공통 코어 고려 |
-| WebRTC 라이브러리 | libdatachannel(C++), webrtc-rs(Rust), Pion(Go), libwebrtc | libdatachannel (libwebrtc는 과도하게 무거움) |
-| Windows 인코더 | NVENC / AMF / QSV 직접 사용, Media Foundation | 초기 Media Foundation, 이후 벤더 SDK |
-| 비트레이트 제어 | 자체 구현 필요 | libdatachannel에 혼잡 제어 없음. RTCP RR/REMB 기반 구현 |
+| Host language | C++ / Rust | Consider a shared Windows/macOS core |
+| WebRTC library | libdatachannel (C++), webrtc-rs (Rust), Pion (Go), libwebrtc | libdatachannel; libwebrtc is excessively heavy |
+| Windows encoder | Direct NVENC / AMF / QSV, Media Foundation | Start with Media Foundation, then consider vendor SDKs |
+| Bitrate control | Custom implementation required | libdatachannel has no congestion control; implement using RTCP RR/REMB |
 
-- **문서 위치:** 3 전체 시스템 아키텍처, 5 Signaling 및 WebRTC
-
----
-
-## 🟡 보완 권장
-
-### #6 프로젝트명 불일치
-
-- 제목은 **SlimeDisplay**, 본문·서비스 타입(`_beam._tcp.local.`)·저장소(`beam/`)는 **Beam**.
-- 하나로 통일한다.
-
-### #7 입력(터치/펜) 기능 일정 명시
-
-- 원격 입력 기본 비활성화는 보안상 타당하나, 확장 디스플레이는 해당 화면에서 조작할 수 없으면 활용도가 크게 떨어진다.
-- MVP 직후 단계로 명시하고, `protocol/`에 DataChannel 입력 메시지 스키마 자리를 미리 확보한다.
-  - 포인터 종류(`touch` / `pen` / `mouse`), 정규화 좌표, 압력, 기울기
-  - Windows 주입: `SendInput`(마우스), `InjectSyntheticPointerInput`(펜 압력)
-  - DataChannel: 이동 이벤트는 `unordered` + `maxRetransmits: 0`, 클릭/키는 reliable 채널
-
-### #8 Windows Graphics Capture 세부 설정
-
-- 노란 캡처 테두리 제거: `IsBorderRequired = false` (Windows 11)
-- 커서 포함 여부: `IsCursorCaptureEnabled`
-- 지연 문제 시 Desktop Duplication API로 교체할 수 있도록 Capture Backend를 인터페이스로 분리
-
-### #9 QR 외 접속 수단
-
-- iPad/Android는 카메라로 QR을 바로 스캔하지만 Windows/macOS Client에서는 불편하다.
-- QR과 함께 **접속 URL + 짧은 페어링 코드**를 표시한다.
-
-### #10 동시 접속 정책
-
-- 한 가상 디스플레이를 여러 Client가 볼 수 있는지, 1대만 허용하는지 정의한다.
-- 인코더 인스턴스 수, 해상도 맞춤 정책(#4)이 이 결정에 따라 달라진다.
-
-### #11 macOS 검증 항목 추가
-
-- ScreenCaptureKit이 `CGVirtualDisplay`로 만든 화면을 다른 디스플레이와 혼동하는 문제가 보고되어 있다.
-- Phase 5 검증 항목에 추가한다.
+- **Document sections:** 3 System Architecture, 5 Signaling and WebRTC
 
 ---
 
-## 🟢 참고
+## 🟡 Recommended Improvements
 
-### #12 Windows mDNS 광고
+### #6 Inconsistent Project Name
 
-- 별도 라이브러리 없이 `DnsServiceRegister`(Windows 10 1809+)로 광고 가능.
+- The title says **SlimeDisplay**, while the body, service type (`_beam._tcp.local.`), and repository (`beam/`) use **Beam**.
+- Standardize on one name.
 
-### #13 브라우저 쪽 지연 측정
+### #7 Schedule Touch/Pen Input Support
 
-- `video.requestVideoFrameCallback()` 메타데이터로 디코딩·렌더링 시점 측정 가능(Safari 지원).
-- 8.1 성능 측정의 Decoding/Rendering Latency 측정 방법으로 명시.
+- Disabling remote input by default is sensible for security, but an extended display is much less useful if it cannot be controlled from that screen.
+- Specify it as the first phase after the MVP and reserve a DataChannel input-message schema in `protocol/`:
+  - Pointer type (`touch` / `pen` / `mouse`), normalized coordinates, pressure, and tilt.
+  - Windows injection: `SendInput` for mouse input and `InjectSyntheticPointerInput` for pen pressure.
+  - DataChannel: use `unordered` with `maxRetransmits: 0` for movement events, and a reliable channel for clicks and keys.
 
-### #14 WebRTC 지연 관련
+### #8 Windows Graphics Capture Details
 
-- Host 송신 간격을 일정하게 유지(화면 변화가 없어도 일정 간격 송신). 불규칙하면 브라우저 지터 버퍼가 커진다.
-- RTP 타임스탬프는 실제 캡처 시각 기준.
-- 큰 주기적 키프레임 대신 intra-refresh를 지원하는 인코더(NVENC 등) 사용 검토.
-- Chrome의 `jitterBufferTarget`은 Safari 지원이 불확실하므로 선택 사항으로 취급.
+- Remove the yellow capture border with `IsBorderRequired = false` (Windows 11).
+- Configure cursor inclusion with `IsCursorCaptureEnabled`.
+- Separate the Capture Backend behind an interface so it can be replaced with Desktop Duplication API if latency is a problem.
 
-### #15 ICE 후보
+### #9 Connection Options Besides QR
 
-- Safari는 자기 Host 후보를 `xxxx.local`(mDNS)로 숨긴다. Host가 Safari의 STUN 체크를 받으면 peer-reflexive 후보로 주소를 알게 되므로 LAN 직접 연결에는 문제없다.
+- iPad and Android users can scan a QR code with the camera, but this is inconvenient on Windows/macOS Clients.
+- Display the **connection URL and a short pairing code** alongside the QR code.
 
-### #16 VDD 운영 주의
+### #10 Concurrent Connection Policy
 
-- VDD는 주요 GPU/칩셋 드라이버 업데이트 전 제거를 권장한다. 설치·제거 UX 문서(Phase 6)에 포함한다.
-- Microsoft Visual C++ Redistributable 의존성 확인.
+- Define whether multiple Clients may view one virtual display or whether only one is allowed.
+- The decision affects the number of encoder instances and the resolution-matching policy in #4.
+
+### #11 Add macOS Verification
+
+- ScreenCaptureKit has been reported to confuse a display created with `CGVirtualDisplay` with another display.
+- Add this to Phase 5 verification.
 
 ---
 
-## 수정 제안: 개발 단계
+## 🟢 Informational
 
-| Phase | 변경 내용 |
+### #12 Windows mDNS Advertisement
+
+- Windows 10 1809 and later can advertise services with `DnsServiceRegister`, without a separate library.
+
+### #13 Measure Latency in the Browser
+
+- Use `video.requestVideoFrameCallback()` metadata to measure decode and render timing (supported by Safari).
+- Document this as the method for measuring Decoding/Rendering Latency in section 8.1.
+
+### #14 WebRTC Latency
+
+- Keep Host transmission intervals consistent, even when the screen has not changed; irregular intervals can increase the browser jitter buffer.
+- Base RTP timestamps on actual capture times.
+- Consider encoders such as NVENC that support intra-refresh instead of large periodic keyframes.
+- Treat Chrome's `jitterBufferTarget` as optional because Safari support is uncertain.
+
+### #15 ICE Candidates
+
+- Safari hides its own Host candidate as `xxxx.local` (mDNS). When the Host receives Safari's STUN check, it learns the address as a peer-reflexive candidate, so this is not a problem for direct LAN connections.
+
+### #16 VDD Operational Notes
+
+- VDD recommends removal before major GPU/chipset driver updates. Include this in the installation/removal UX documentation (Phase 6).
+- Check the Microsoft Visual C++ Redistributable dependency.
+
+---
+
+## Proposed Development-Phase Changes
+
+| Phase | Change |
 | :--- | :--- |
-| Phase 1 | 변경 없음 |
-| Phase 2 | **실제 iPad Safari 테스트**, **HTTPS/WSS 동작 확인(#3)**, **H.264 레벨 확인(#1)** 추가. 기술 스택(#5) 확정 후 시작 |
-| Phase 3 | URL + 페어링 코드 표시(#9) 추가 |
-| Phase 4 | **Client 해상도 맞춤(#4)** 이동 |
-| Phase 5 | ScreenCaptureKit 디스플레이 혼동 검증(#11) 추가 |
-| Phase 6 | 해상도 변경 항목 제거(#4로 이동). VDD 운영 주의(#16) 반영 |
-| Phase 7 (신규) | 입력(터치/펜) DataChannel 지원(#7) |
+| Phase 1 | No change |
+| Phase 2 | Add **real iPad Safari testing**, **HTTPS/WSS verification (#3)**, and **H.264 level verification (#1)**. Confirm the technology stack (#5) before starting. |
+| Phase 3 | Add displaying the URL and pairing code (#9). |
+| Phase 4 | Move **Client resolution matching (#4)** here. |
+| Phase 5 | Add verification for ScreenCaptureKit display confusion (#11). |
+| Phase 6 | Remove resolution-change work (moved to #4). Include VDD operational notes (#16). |
+| Phase 7 (new) | Add DataChannel support for touch/pen input (#7). |
 
 ---
 
-## 참고 링크
+## References
 
 - Virtual-Display-Driver: https://github.com/VirtualDrivers/Virtual-Display-Driver
-- go-macos/virtualdisplay (CGVirtualDisplay Private API 안내): https://pkg.go.dev/github.com/go-macos/virtualdisplay
-- Apple Developer Forums, Private API 공증 관련: https://developer.apple.com/forums/thread/702740
-- Apple Developer Forums, ScreenCaptureKit 가상 디스플레이 혼동: https://developer.apple.com/forums/thread/786829
+- go-macos/virtualdisplay (notes on the `CGVirtualDisplay` private API): https://pkg.go.dev/github.com/go-macos/virtualdisplay
+- Apple Developer Forums, notarization and private APIs: https://developer.apple.com/forums/thread/702740
+- Apple Developer Forums, ScreenCaptureKit virtual-display confusion: https://developer.apple.com/forums/thread/786829
