@@ -68,6 +68,19 @@ ipch/
 *.VC.db
 *.VC.VC.opendb
 
+# Node / React
+node_modules/
+dist/
+**/build/
+coverage/
+.vite/
+.env*.local
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
 # fastlane
 #
 # It is recommended to not store the screenshots in the git repo.
