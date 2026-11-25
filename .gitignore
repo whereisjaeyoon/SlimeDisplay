@@ -94,3 +94,10 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 /build
+
+# Rust
+#
+# Cargo.lock is committed: SlimeDisplay-server is a binary crate.
+target/
+**/*.rs.bk
+*.pdb
