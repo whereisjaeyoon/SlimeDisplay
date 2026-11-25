@@ -263,22 +263,22 @@ impl DisplayBackend for MockAdapter {
     }
 
     fn start_capture(&mut self) -> Result<(), SdError> {
-        self.record("start_capture");
+        drop(self.record("start_capture"));
         Ok(())
     }
 
     fn stop_capture(&mut self) -> Result<(), SdError> {
-        self.record("stop_capture");
+        drop(self.record("stop_capture"));
         Ok(())
     }
 
     fn start_encoder(&mut self) -> Result<(), SdError> {
-        self.record("start_encoder");
+        drop(self.record("start_encoder"));
         Ok(())
     }
 
     fn stop_encoder(&mut self) -> Result<(), SdError> {
-        self.record("stop_encoder");
+        drop(self.record("stop_encoder"));
         Ok(())
     }
 
