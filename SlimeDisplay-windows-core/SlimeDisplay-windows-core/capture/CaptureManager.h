@@ -14,7 +14,7 @@
 class CaptureManager {
 public:
     using FrameCallback =
-        std::function<void(const std::vector<uint8_t>&, int64_t)>;
+        std::function<void(const std::vector<uint8_t>&, bool, int64_t)>;
 
     ~CaptureManager();
 

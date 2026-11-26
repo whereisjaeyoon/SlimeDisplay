@@ -40,10 +40,13 @@ It provides the same C ABI as the macOS version so that the upper-level C++ Serv
  Windows Display APIs       DXGI Desktop Duplication
              |                           |
              v                           v
- Existing VirtualDrivers VDD       D3D11 staging texture
+ Existing VirtualDrivers VDD       D3D11 Video Processor
              |                           |
              v                           v
-      Virtual Monitor            EncoderManager
+      Virtual Monitor            NV12 staging readback
+                                         |
+                                         v
+                                   EncoderManager
                                          |
                                          v
                                 Media Foundation
@@ -69,15 +72,18 @@ It provides the same C ABI as the macOS version so that the upper-level C++ Serv
 **CaptureManager**
 
 - Captures the selected VDD monitor with DXGI Desktop Duplication.
+- Uses the D3D11 video processor to convert to NV12 on the GPU when supported,
+  then reads the NV12 frame back to CPU memory.
 - Falls back to GDI capture when Desktop Duplication is unavailable.
-- Converts the captured monitor to BGRA frames for the encoder.
+- Falls back to BGRA frames when GPU video conversion is unavailable.
 - Passes frames to the encoder.
 
 **EncoderManager**
 
 - Uses the Media Foundation H.264 hardware encoder when available, with a
   synchronous Media Foundation encoder fallback.
-- Converts BGRA frames to NV12 and bounds its queue to keep latency controlled.
+- Uses captured NV12 frames directly; converts BGRA fallback frames to NV12 on
+  the CPU and bounds its queue to keep latency controlled.
 - Delivers encoded frames through a DLL callback.
 
 ## 3. Active Solution Structure
@@ -174,13 +180,13 @@ Existing VDD Virtual Monitor
  DXGI Desktop Duplication
             |
             v
- D3D11 staging texture
+ D3D11 Video Processor
             |
             v
-  BGRA frame (CPU)
+  NV12 staging texture
             |
             v
-  BGRA-to-NV12 conversion
+    NV12 frame (CPU)
              |
              v
   Media Foundation H.264
@@ -192,9 +198,13 @@ Existing VDD Virtual Monitor
    SD_EncodedFrameCallback
 ```
 
-Desktop Duplication captures through the Windows display stack; the current
-implementation reads frames back to CPU memory for BGRA-to-NV12 conversion.
-It does not access the VDD driver's internal SwapChain.
+When supported, the DXGI path converts BGRA to NV12 on the GPU and reads only
+the NV12 frame back to CPU memory. If the D3D11 video processor is unavailable,
+the implementation falls back to BGRA readback and CPU conversion. NV12
+textures are not yet passed zero-copy to the Media Foundation encoder, and the
+implementation does not access the VDD driver's internal SwapChain. The
+streaming test viewer renders decoded NV12 directly to a DXGI swap chain when
+supported, falling back to CPU conversion and GDI otherwise.
 
 ## 6. Build
 
@@ -217,7 +227,7 @@ It does not access the VDD driver's internal SwapChain.
 ### Phase 2 — Capture
 
 - [x] Connect Desktop Duplication to `CaptureManager`.
-- [x] Read back frames for BGRA-to-NV12 conversion.
+- [x] GPU Video Processor NV12 conversion with BGRA fallback.
 - [x] Implement frame processing and synchronization.
 - [x] Manage capture and GPU resources.
 - [x] Implement capture start/stop.

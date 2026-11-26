@@ -63,8 +63,11 @@ SD_Result SDManager::start_capture()
         width,
         height,
         fps,
-        [this](const std::vector<uint8_t>& frame, int64_t presentationTime) {
-            encoder_.enqueue_frame(frame, presentationTime);
+        [this](
+            const std::vector<uint8_t>& frame,
+            bool isNv12,
+            int64_t presentationTime) {
+            encoder_.enqueue_frame(frame, isNv12, presentationTime);
         });
 }
 

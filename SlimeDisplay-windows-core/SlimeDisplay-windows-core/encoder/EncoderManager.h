@@ -17,13 +17,15 @@ public:
     SD_Result start(uint32_t width, uint32_t height, uint32_t fps);
     SD_Result stop();
     SD_Result enqueue_frame(
-        const std::vector<uint8_t>& bgra,
+        const std::vector<uint8_t>& pixels,
+        bool is_nv12,
         int64_t presentation_time);
     void set_callback(SD_EncodedFrameCallback callback, void* user_data);
 
 private:
     struct Frame {
-        std::vector<uint8_t> bgra;
+        std::vector<uint8_t> pixels;
+        bool is_nv12;
         int64_t presentation_time;
     };
 

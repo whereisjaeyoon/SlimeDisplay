@@ -40,10 +40,13 @@ macOS 버전과 동일한 C ABI를 제공하여 상위 C++ Server가 플랫폼�
  Windows Display APIs       DXGI Desktop Duplication
              |                           |
              v                           v
- 기존 VirtualDrivers VDD            D3D11 staging texture
+ 기존 VirtualDrivers VDD       D3D11 Video Processor
              |                           |
              v                           v
-        가상 모니터                 EncoderManager
+        가상 모니터              NV12 staging readback
+                                         |
+                                         v
+                                   EncoderManager
                                          |
                                          v
                                 Media Foundation
@@ -69,15 +72,17 @@ macOS 버전과 동일한 C ABI를 제공하여 상위 C++ Server가 플랫폼�
 **CaptureManager**
 
 - DXGI Desktop Duplication으로 선택된 VDD 모니터 캡처
+- 지원되면 D3D11 Video Processor로 GPU에서 NV12 변환 후 CPU로 읽기
 - Desktop Duplication을 사용할 수 없으면 GDI로 대체
-- 인코더에 전달할 BGRA 프레임 생성
+- GPU 변환을 쓸 수 없으면 BGRA 프레임으로 대체
 - 인코더로 프레임 전달
 
 **EncoderManager**
 
 - Media Foundation H.264 하드웨어 인코더 우선 사용, 불가하면 동기식
   Media Foundation 인코더 사용
-- BGRA 프레임을 NV12로 변환하고 제한된 큐로 지연을 제어
+- NV12 프레임을 우선 사용하고, BGRA 대체 경로는 CPU에서 NV12로 변환
+- 제한된 큐로 지연을 제어
 - 인코딩된 프레임을 DLL 콜백으로 전달
 
 ## 3. 활성 솔루션 구조
@@ -176,13 +181,13 @@ SlimeDisplay DLL에서 별도의 IDD를 설치·빌드·관리하지 않는다. 
  DXGI Desktop Duplication
             |
             v
- D3D11 staging texture
+ D3D11 Video Processor
             |
             v
-  BGRA frame (CPU)
+  NV12 staging texture
             |
             v
- BGRA-to-NV12 변환
+    NV12 frame (CPU)
              |
              v
  Media Foundation H.264
@@ -194,9 +199,12 @@ SlimeDisplay DLL에서 별도의 IDD를 설치·빌드·관리하지 않는다. 
    SD_EncodedFrameCallback
 ```
 
-현재 Desktop Duplication 구현은 Windows 디스플레이 스택에서 프레임을
-가져와 CPU 메모리로 읽은 뒤 BGRA-to-NV12 변환을 수행한다. VDD 드라이버
-내부 SwapChain에는 직접 접근하지 않는다.
+DXGI 경로는 지원되는 GPU에서 BGRA-to-NV12 색 변환을 GPU에서 수행하고
+NV12 프레임만 CPU로 읽는다. GPU 비디오 프로세서가 없으면 BGRA readback과
+CPU 변환으로 대체한다. 현재는 NV12 텍스처를 Media Foundation 인코더까지
+무복사로 전달하지 않으며, VDD 드라이버 내부 SwapChain에도 직접 접근하지
+않는다. 스트리밍 테스트 뷰어는 지원되는 GPU에서 NV12를 DXGI swap chain에
+직접 렌더링하고, 지원되지 않으면 기존 CPU 변환과 GDI 표시를 사용한다.
 
 ## 6. 빌드
 
@@ -218,7 +226,7 @@ SlimeDisplay DLL에서 별도의 IDD를 설치·빌드·관리하지 않는다. 
 ### Phase 2 — Capture
 
 - [x] Desktop Duplication과 CaptureManager 연결
-- [x] BGRA-to-NV12 변환을 위한 프레임 읽기
+- [x] GPU Video Processor NV12 변환 및 BGRA 대체 경로
 - [x] 프레임 처리 및 동기화
 - [x] 캡처 및 GPU 리소스 관리
 - [x] Capture Start / Stop 구현
