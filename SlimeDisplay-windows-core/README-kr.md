@@ -2,7 +2,7 @@
 
 ## 1. 프로젝트 개요
 
-Windows 버전 SlimeDisplay는 Windows의 Indirect Display Driver (IDD)를 이용해 가상 디스플레이를 생성하고, 해당 디스플레이의 프레임을 캡처하여 인코딩하는 모듈이다.
+Windows 버전 SlimeDisplay는 기존 [Virtual Display Driver (VDD)](https://github.com/VirtualDrivers/Virtual-Display-Driver)가 제공하는 가상 모니터를 선택해 프레임을 캡처하고 인코딩한다. SlimeDisplay 자체 IDD를 구현하거나 설치하지 않는다.
 
 macOS 버전과 동일한 C ABI를 제공하여 상위 C++ Server가 플랫폼에 관계없이 동일한 인터페이스로 가상 디스플레이를 제어할 수 있도록 한다.
 
@@ -10,12 +10,13 @@ macOS 버전과 동일한 C ABI를 제공하여 상위 C++ Server가 플랫폼�
 
 | 항목 | 기술 |
 |---|---|
-| IDE | Visual Studio 2022 |
+| IDE | Visual Studio 18 (v145 도구 집합) |
 | Language | C++20 |
 | Compiler | MSVC |
-| Build System | MSBuild / CMake (추후 통합 가능) |
-| Display Driver | Windows Indirect Display Driver |
-| Driver Framework | UMDF 2 / IddCx |
+| Build System | MSBuild |
+| Display Driver | VirtualDrivers Virtual Display Driver (별도 설치) |
+| 디스플레이 연동 | Windows 디스플레이 구성 API |
+| 캡처 API | DXGI Desktop Duplication (GDI 대체 경로) |
 | Graphics API | Direct3D 11 |
 | Encoder | Media Foundation |
 | Architecture | x64 |
@@ -31,19 +32,21 @@ macOS 버전과 동일한 C ABI를 제공하여 상위 C++ Server가 플랫폼�
                  SlimeDisplay.dll
                            |
              +-------------+-------------+
-             |             |             |
-             v             v             v
-       DisplayManager  CaptureManager  EncoderManager
-             |             |             |
-             |             |             |
-             v             v             v
-          IDD Driver   D3D11 Surface  Media Foundation
-             |
-             v
-      Windows Display Stack
-             |
-             v
-       Virtual Monitor
+             |                           |
+             v                           v
+       DisplayManager               CaptureManager
+             |                           |
+             v                           v
+ Windows Display APIs       DXGI Desktop Duplication
+             |                           |
+             v                           v
+ 기존 VirtualDrivers VDD            D3D11 staging texture
+             |                           |
+             v                           v
+        가상 모니터                 EncoderManager
+                                         |
+                                         v
+                                Media Foundation
 ```
 
 ### 모듈별 책임
@@ -51,31 +54,33 @@ macOS 버전과 동일한 C ABI를 제공하여 상위 C++ Server가 플랫폼�
 **SlimeDisplay.dll**
 
 - C ABI 제공
-- 가상 디스플레이 생성 및 제거 요청
+- 기존 VDD 가상 모니터 선택 및 설정
+- 사용 가능한 VDD 모니터가 없으면 `SD_ERROR_NOT_SUPPORTED` 반환
 - 디스플레이 상태 관리
 - 프레임 캡처 및 인코더 제어
 - 인코딩된 프레임을 외부 콜백으로 전달
 
-**SlimeDisplayDriver**
+**VirtualDrivers VDD (외부 의존성)**
 
-- Windows IDD 기반 가상 모니터 등록
-- 디스플레이 모드 및 해상도 관리
-- OS에서 전달하는 SwapChain 프레임 수신
-- Direct3D Surface 제공
+- Windows Display Stack에 가상 모니터 등록 및 제공
+- 자체 설치 프로그램과 Virtual Driver Control로 설정 및 업데이트
+- SlimeDisplay 전용 C API는 제공하지 않으며 DLL은 Windows 디스플레이·캡처 API 사용
 
 **CaptureManager**
 
-- IDD SwapChain에서 프레임 수신
-- GPU Surface 처리
+- DXGI Desktop Duplication으로 선택된 VDD 모니터 캡처
+- Desktop Duplication을 사용할 수 없으면 GDI로 대체
+- 인코더에 전달할 BGRA 프레임 생성
 - 인코더로 프레임 전달
 
 **EncoderManager**
 
-- Media Foundation 기반 하드웨어 인코딩
-- H.264 등 지원 코덱으로 인코딩
+- Media Foundation H.264 하드웨어 인코더 우선 사용, 불가하면 동기식
+  Media Foundation 인코더 사용
+- BGRA 프레임을 NV12로 변환하고 제한된 큐로 지연을 제어
 - 인코딩된 프레임을 DLL 콜백으로 전달
 
-## 3. 프로젝트 디렉터리 구조
+## 3. 활성 솔루션 구조
 
 ```text
 SlimeDisplay/
@@ -83,45 +88,32 @@ SlimeDisplay/
 │   ├── slimedisplay.h
 │   └── slimedisplay_types.h
 │
-├── windows/
-│   ├── SlimeDisplay.sln
-│   │
-│   ├── SlimeDisplay/
-│   │   ├── SlimeDisplay.vcxproj
-│   │   ├── SDAPI.cpp
-│   │   ├── SDManager.h
-│   │   ├── SDManager.cpp
-│   │   │
-│   │   ├── display/
-│   │   │   ├── DisplayManager.h
-│   │   │   └── DisplayManager.cpp
-│   │   │
-│   │   ├── capture/
-│   │   │   ├── CaptureManager.h
-│   │   │   └── CaptureManager.cpp
-│   │   │
-│   │   └── encoder/
-│   │       ├── EncoderManager.h
-│   │       └── EncoderManager.cpp
-│   │
-│   ├── SlimeDisplayDriver/
-│   │   ├── Driver.cpp
-│   │   ├── Driver.h
-│   │   ├── Direct3DDevice.cpp
-│   │   ├── IndirectDeviceContext.cpp
-│   │   ├── IndirectMonitorContext.cpp
-│   │   ├── SwapChainProcessor.cpp
-│   │   ├── Device.tmh
-│   │   └── SlimeDisplayDriver.vcxproj
-│   │
-│   └── SlimeDisplayTest/
-│       ├── main.cpp
-│       └── SlimeDisplayTest.vcxproj
-│
-└── README.md
+└── SlimeDisplay-windows-core/
+    ├── README.md
+    ├── README-kr.md
+    ├── SlimeDisplay.sln
+    │
+    ├── SlimeDisplay-windows-core/
+    │   ├── SlimeDisplay-windows-core.vcxproj
+    │   ├── SDAPI.cpp
+    │   ├── SDManager.h
+    │   ├── SDManager.cpp
+    │   ├── display/
+    │   │   ├── DisplayManager.h
+    │   │   └── DisplayManager.cpp
+    │   ├── capture/
+    │   │   ├── CaptureManager.h
+    │   │   └── CaptureManager.cpp
+    │   └── encoder/
+    │       ├── EncoderManager.h
+    │       └── EncoderManager.cpp
+    │
+    └── SlimeDisplayTest/
+        ├── SlimeDisplayTest.vcxproj
+        └── main.cpp
 ```
 
-`SlimeDisplayDriver`는 Microsoft IDD Sample을 기반으로 구현한다. DLL과 드라이버는 별도의 프로젝트로 빌드하고 배포한다.
+공통 헤더는 저장소 루트의 `include/` 디렉터리에 있으며 DLL 프로젝트에서 참조한다. 외부 VDD는 이 저장소에 포함되지 않으며 별도로 설치한다.
 
 ## 4. DLL Public API
 
@@ -133,8 +125,8 @@ SlimeDisplay/
 |---|---|
 | `sd_create` | SlimeDisplay 인스턴스 생성 |
 | `sd_destroy` | 인스턴스 제거 |
-| `sd_create_virtual_display` | 가상 디스플레이 생성 |
-| `sd_destroy_virtual_display` | 가상 디스플레이 제거 |
+| `sd_create_virtual_display` | 기존 VDD 모니터 선택 및 설정 |
+| `sd_destroy_virtual_display` | 선택한 모니터 해제 (VDD 설치 제거는 하지 않음) |
 | `sd_get_virtual_display_info` | 디스플레이 정보 조회 |
 | `sd_start_capture` | 프레임 캡처 시작 |
 | `sd_stop_capture` | 프레임 캡처 중지 |
@@ -146,46 +138,54 @@ SlimeDisplay/
 ### API 구현 원칙
 
 - 외부 인터페이스는 C ABI로 유지한다.
+- macOS 공개 `slimedisplay.h`와 동일한 함수 시그니처를 내보낸다.
 - 내부 구현은 C++ 클래스로 분리한다.
 - `SD_Handle`은 내부 `SDManager` 객체를 감추는 opaque handle로 사용한다.
 - C++ 예외가 C ABI 경계를 넘어가지 않도록 한다.
 - 콜백은 별도 인코딩 처리 경로에서 호출하고 네트워크 전송 때문에 블로킹되지 않도록 한다.
 - 콜백으로 전달되는 프레임 메모리의 유효 기간을 명확히 정의한다.
 
-## 5. IDD Driver
+Windows DLL은 공통 C ABI를 내보낸다. 이미 설치된 VDD 모니터를 선택해
+지원 모드를 적용하고, 디스플레이를 해제할 때 원래 모드로 복원한다.
+캡처는 Desktop Duplication을 우선 사용하고 사용할 수 없으면 GDI로
+대체한다. H.264 인코딩은 Media Foundation 하드웨어 변환기를 우선 사용하며,
+사용할 수 없으면 동기식 Media Foundation 변환기를 사용한다.
 
-Windows의 가상 디스플레이는 일반적인 DLL만으로 생성할 수 없다. OS에 디스플레이 장치를 등록하기 위해 Indirect Display Driver가 필요하다.
+인코딩 콜백에 전달되는 H.264 데이터 버퍼는 콜백 실행 중에만 유효하다.
+Windows smoke test는 VDD의 현재 모드를 사용하고 디스플레이 정보 및
+인코딩 프레임 전달을 확인한다. 공통 라이브러리 버전 규칙이 정해지기
+전까지 `sd_get_version`은 `0`을 반환한다.
+콜백은 인코더 worker thread에서 실행된다. 다른 thread에서
+`sd_stop_encoder`가 반환할 때까지 콜백 코드와 `user_data`를 유효하게
+유지하고, 콜백 안에서 handle을 제거하지 않는다.
 
-IDD는 UMDF 기반의 사용자 모드 드라이버이며, IddCx를 통해 Windows Display Stack과 통신한다.
+## 5. 기존 Virtual Display Driver 사용
 
-### 주요 구성 요소
+새 IDD를 만드는 대신 기존 [VirtualDrivers Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)를 사용한다. 공식 설치 프로그램 또는 Virtual Driver Control로 VDD를 별도 설치·설정하고, SlimeDisplay를 실행하기 전에 가상 모니터를 하나 이상 활성화한다.
 
-| 구성 요소 | 역할 |
-|---|---|
-| `Direct3DDevice` | Direct3D 디바이스 관리 |
-| `IndirectDeviceContext` | 간접 디스플레이 장치 관리 |
-| `IndirectMonitorContext` | 가상 모니터 및 디스플레이 모드 관리 |
-| `SwapChainProcessor` | OS가 전달하는 프레임 처리 |
+VDD는 가상 모니터를 Windows에 등록하고 지원 해상도를 제공한다. SlimeDisplay는 Windows 디스플레이 API를 통해 이미 존재하는 VDD 모니터를 열거하고 선택해야 한다. VDD는 SlimeDisplay 전용 C ABI를 제공하지 않으며, 모니터 수와 지원 모드는 VDD의 자체 제어 도구 및 설정으로 관리한다.
+
+SlimeDisplay DLL에서 별도의 IDD를 설치·빌드·관리하지 않는다. 드라이버 설치, 업데이트, 서명 및 제거는 VDD 패키지가 담당한다.
 
 ### 프레임 처리 경로
 
 ```text
-Windows Desktop Composition
+기존 VDD 가상 모니터
             |
             v
-     IDD SwapChain
+ DXGI Desktop Duplication
             |
             v
-   SwapChainProcessor
+ D3D11 staging texture
             |
             v
-    Direct3D Surface
+  BGRA frame (CPU)
             |
             v
-      CaptureManager
-            |
-            v
-   Media Foundation Encoder
+ BGRA-to-NV12 변환
+             |
+             v
+ Media Foundation H.264
             |
             v
      Encoded Frame
@@ -194,118 +194,55 @@ Windows Desktop Composition
    SD_EncodedFrameCallback
 ```
 
-가능하면 GPU Surface를 CPU 메모리로 불필요하게 복사하지 않고 인코더까지 전달하는 GPU 기반 경로를 우선한다.
+현재 Desktop Duplication 구현은 Windows 디스플레이 스택에서 프레임을
+가져와 CPU 메모리로 읽은 뒤 BGRA-to-NV12 변환을 수행한다. VDD 드라이버
+내부 SwapChain에는 직접 접근하지 않는다.
 
-## 6. Visual Studio 2022 프로젝트 설정
+## 6. 빌드
 
-### SlimeDisplay DLL
-
-Visual Studio에서 다음 설정으로 프로젝트를 생성한다.
-
-- Create a new project
-- Dynamic-Link Library (DLL)
-- C++
-- Project name: `SlimeDisplay`
-- Platform: x64
-- Language Standard: C++20
-
-주요 속성:
-
-| 설정 | 값 |
-|---|---|
-| Configuration Type | Dynamic Library (.dll) |
-| C++ Language Standard | ISO C++20 |
-| Character Set | Use Unicode |
-| Runtime Library (Debug) | Multi-threaded Debug DLL (/MDd) |
-| Runtime Library (Release) | Multi-threaded DLL (/MD) |
-| Precompiled Header | Not Using |
-| Target Architecture | x64 |
-
-Preprocessor Definitions:
-
-```text
-SLIMEDISPLAY_EXPORTS
-WIN32_LEAN_AND_MEAN
-NOMINMAX
-```
-
-Additional Include Directories:
-
-```text
-$(SolutionDir)..\include
-```
-
-### IDD Driver
-
-IDD Driver 프로젝트는 Microsoft의 Windows Driver Samples 저장소에 있는 Indirect Display Driver Sample을 기반으로 구성한다.
-
-필요한 개발 구성 요소:
-
-- Visual Studio 2022
-- Windows SDK
-- Windows Driver Kit (WDK)
-- UMDF 및 IddCx 개발 지원
-
-드라이버 프로젝트는 일반 DLL 프로젝트와 별도로 구성한다.
+- Visual Studio 18에서 v145 도구 집합을 사용해 기존 `SlimeDisplay.sln`을 연다.
+- `x64`를 선택하고 `SlimeDisplay-windows-core` 프로젝트를 빌드한다.
+- 솔루션은 DLL과 `SlimeDisplayTest`를 빌드한다.
+- `SlimeDisplayTest` 실행 전 외부 VDD를 설치하고 활성화한다. 테스트는
+  현재 디스플레이 모드를 사용하고 종료 시 원래 모드로 복원한다.
 
 ## 7. 개발 단계
 
-### Phase 1 — DLL 기본 구조
+### Phase 1 — 기존 VDD 연동
 
-- [ ] Visual Studio Solution 생성
-- [ ] SlimeDisplay DLL 프로젝트 생성
-- [ ] 공통 헤더 연결
-- [ ] `SDManager` 구현
-- [ ] `sd_create` 구현
-- [ ] `sd_destroy` 구현
-- [ ] `sd_get_version` 구현
-- [ ] DLL 로딩 테스트
+- [ ] 외부 VirtualDrivers VDD 설치 및 활성화
+- [x] Windows 디스플레이 API로 VDD 가상 모니터 열거
+- [x] 기존 가상 모니터 선택 및 디스플레이 모드 설정
+- [x] 설치된 VDD에서 DXGI Desktop Duplication 캡처 확인
 
-### Phase 2 — IDD Driver
+### Phase 2 — Capture
 
-- [ ] Microsoft IDD Sample 빌드
-- [ ] 테스트 환경에서 드라이버 설치
-- [ ] Software Device 생성 및 드라이버 연결
-- [ ] 가상 모니터 생성 확인
-- [ ] 해상도 및 디스플레이 모드 설정
-- [ ] SwapChain 프레임 수신 확인
+- [x] Desktop Duplication과 CaptureManager 연결
+- [x] BGRA-to-NV12 변환을 위한 프레임 읽기
+- [x] 프레임 처리 및 동기화
+- [x] 캡처 및 GPU 리소스 관리
+- [x] Capture Start / Stop 구현
 
-### Phase 3 — Capture
+### Phase 3 — Encoder
 
-- [ ] SwapChainProcessor와 CaptureManager 연결
-- [ ] Direct3D Surface 전달
-- [ ] 프레임 처리 및 동기화
-- [ ] GPU 리소스 관리
-- [ ] Capture Start / Stop 구현
+- [x] Media Foundation 초기화
+- [x] 동기식 대체 경로를 포함한 H.264 인코더 연결
+- [x] 현재 시스템의 하드웨어 인코딩 확인
+- [x] 인코딩 프레임 콜백 구현
+- [x] 프레임 타임스탬프 처리
 
-### Phase 4 — Encoder
-
-- [ ] Media Foundation 초기화
-- [ ] H.264 인코더 연결
-- [ ] 하드웨어 인코딩 지원 확인
-- [ ] 인코딩 프레임 콜백 구현
-- [ ] 프레임 타임스탬프 처리
-
-### Phase 5 — 통합 테스트
+### Phase 4 — 통합 테스트
 
 - [ ] DLL API 전체 테스트
-- [ ] 가상 디스플레이 생성 및 제거 반복 테스트
+- [ ] 기존 VDD 가상 모니터 선택 및 해제 반복 테스트
 - [ ] FHD 60 FPS 캡처
-- [ ] 인코딩 프레임 전달 확인
+- [x] 현재 시스템에서 인코딩 프레임 전달 확인
 - [ ] 장시간 실행 안정성 테스트
 - [ ] Server와 C ABI 연동
 
-## 8. 테스트 및 배포 고려사항
+## 8. 참고 자료
 
-- IDD 드라이버 설치에는 드라이버 패키지와 INF 구성이 필요하다.
-- 개발 환경에서는 테스트 서명 및 드라이버 설치 정책을 확인해야 한다.
-- 일반적인 사용자 환경에 배포할 때는 드라이버 서명 및 설치 절차를 별도로 준비해야 한다.
-- 드라이버와 DLL의 버전 호환성을 관리해야 한다.
-- 드라이버 제거 시 가상 모니터 및 관련 리소스가 정상적으로 해제되어야 한다.
-
-## 9. 참고 자료
-
-- [Microsoft Windows Driver Samples — Indirect Display Driver](https://github.com/microsoft/Windows-driver-samples/tree/main/video/IndirectDisplay)
-- [Microsoft Learn — Indirect Display Driver Model](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/indirect-display-driver-model-overview)
-- [Microsoft Learn — IddCx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/iddcx/)
+- [VirtualDrivers — Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)
+- [Microsoft Learn — Desktop Duplication](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/desktop-dup-api)
+- [Microsoft Learn — QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig)
 - [Microsoft Learn — Media Foundation](https://learn.microsoft.com/en-us/windows/win32/medfound/microsoft-media-foundation-sdk)
