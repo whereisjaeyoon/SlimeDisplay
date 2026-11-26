@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="SlimeDisplay-windows-core/SlimeDisplay-windows-core.vcxproj" Id="ba27d43f-0b13-46ad-bedb-b2223c4eb6cf" />
-</Solution>
