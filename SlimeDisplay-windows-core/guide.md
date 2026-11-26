@@ -23,19 +23,22 @@ Windows 디스플레이 API   DXGI Desktop Duplication
 외부 VDD 가상 모니터       BGRA 프레임
                             |
                             v
-                     제한된 프레임 큐
+            D3D11 Video Processor
                             |
                             v
-                    BGRA -> NV12 변환
+              NV12 staging readback
                             |
                             v
+                제한된 프레임 큐
+                      |
+                      v
                  Media Foundation H.264
                             |
                             v
                  SD_EncodedFrameCallback
 ```
 
-화면 캡처는 DXGI의 D3D11 출력 복제 기능을 우선 사용한다. 복제 경로를 만들 수 없는 경우에는 GDI 캡처를 시도한다. 두 경로 모두 현재 CPU 메모리의 BGRA 프레임을 만든다. 인코더는 이를 NV12로 변환해 Media Foundation에 전달한다.
+화면 캡처는 DXGI의 D3D11 출력 복제 기능을 우선 사용한다. GPU 비디오 프로세서가 지원되면 BGRA를 GPU에서 NV12로 변환한 뒤 NV12 텍스처만 CPU 메모리로 읽어 인코더에 전달한다. 이 GPU 변환을 사용할 수 없으면 BGRA staging readback과 CPU 변환을 사용하고, DXGI 초기화 자체가 불가능하면 GDI 캡처로 대체한다. NV12 텍스처를 Media Foundation 인코더까지 무복사로 전달하는 경로는 아직 아니다.
 
 ## 2. 소스 파일별 역할
 
@@ -47,7 +50,7 @@ Windows 디스플레이 API   DXGI Desktop Duplication
 | [`SlimeDisplay-windows-core/SDManager.h`](./SlimeDisplay-windows-core/SDManager.h) / [`SDManager.cpp`](./SlimeDisplay-windows-core/SDManager.cpp) | 한 인스턴스의 디스플레이·캡처·인코더 수명주기 연결 |
 | [`SlimeDisplay-windows-core/display/DisplayManager.h`](./SlimeDisplay-windows-core/display/DisplayManager.h) / [`DisplayManager.cpp`](./SlimeDisplay-windows-core/display/DisplayManager.cpp) | VDD 모니터 검색, 지원 모드 선택, 현재 모드 적용 및 원래 모드 복원 |
 | [`SlimeDisplay-windows-core/capture/CaptureManager.h`](./SlimeDisplay-windows-core/capture/CaptureManager.h) / [`CaptureManager.cpp`](./SlimeDisplay-windows-core/capture/CaptureManager.cpp) | DXGI Desktop Duplication 또는 GDI로 화면을 캡처하고 프레임 콜백 실행 |
-| [`SlimeDisplay-windows-core/encoder/EncoderManager.h`](./SlimeDisplay-windows-core/encoder/EncoderManager.h) / [`EncoderManager.cpp`](./SlimeDisplay-windows-core/encoder/EncoderManager.cpp) | 프레임 큐, BGRA-to-NV12 변환, Media Foundation H.264 인코딩 및 결과 콜백 |
+| [`SlimeDisplay-windows-core/encoder/EncoderManager.h`](./SlimeDisplay-windows-core/encoder/EncoderManager.h) / [`EncoderManager.cpp`](./SlimeDisplay-windows-core/encoder/EncoderManager.cpp) | NV12/BGRA 프레임 큐, Media Foundation H.264 인코딩 및 결과 콜백 |
 | [`SlimeDisplayTest/main.cpp`](./SlimeDisplayTest/main.cpp) | 빌드된 DLL을 로드해 C ABI와 VDD 인코딩 경로를 확인하는 스모크 테스트 |
 
 `SD_Handle`은 C 호출자에게 내부 C++ 객체를 노출하지 않는 불투명 핸들이다. `SDManager`는 공개 API 요청을 담당 매니저로 전달한다. 디스플레이 설정 변경과 정보 조회는 mutex로 보호한다.
@@ -85,17 +88,17 @@ Windows 디스플레이 API   DXGI Desktop Duplication
 
 ### 3.3 캡처 단계
 
-`CaptureManager`는 디스플레이 장치 이름과 요청 크기를 사용해 DXGI 어댑터·출력을 찾는다. 대상 출력에서 `IDXGIOutputDuplication`을 만들고 D3D11 staging texture를 생성한다. 프레임이 갱신되면 복제된 GPU 텍스처를 staging texture로 복사하고 CPU에서 읽어 BGRA 버퍼를 만든다.
+`CaptureManager`는 디스플레이 장치 이름과 요청 크기를 사용해 DXGI 어댑터·출력을 찾는다. 대상 출력에서 `IDXGIOutputDuplication`을 만든다. GPU 비디오 프로세서와 NV12 포맷을 지원하면 복제 텍스처를 GPU에서 NV12로 변환하고 staging texture로 읽어 CPU 프레임을 만든다. 지원되지 않으면 기존 BGRA staging 경로를 쓴다.
 
-Desktop Duplication 초기화가 불가능하면 GDI 경로를 사용한다. 이 경로는 대상 모니터의 화면 영역을 DIB로 복사한다. 캡처 루프는 요청 FPS에 맞춰 프레임 전달을 시도한다. DXGI가 새 화면을 반환하지 않는 반복에서는 마지막 픽셀 내용을 유지해 전달할 수 있다.
+Desktop Duplication 초기화가 불가능하면 GDI 경로를 사용한다. 이 경로는 대상 모니터의 화면 영역을 DIB로 복사한다. 캡처 루프는 요청 FPS에 맞춰 프레임 전달을 시도하고, DXGI가 갱신 프레임을 반환하지 않으면 전달을 건너뛴다.
 
-캡처 타임스탬프는 캡처 시작 시점부터 경과한 시간이며, 100ns 단위로 인코더에 전달된다. 현재 캡처 버퍼는 CPU 메모리다. 따라서 DXGI를 사용하더라도 GPU Surface를 인코더까지 무복사로 전달하는 구조는 아니다.
+캡처 타임스탬프는 캡처 시작 시점부터 경과한 시간이며, 100ns 단위로 인코더에 전달된다. 캡처 콜백 버퍼는 CPU 메모리다. GPU 색 변환은 적용하지만 DXGI 텍스처를 인코더까지 무복사로 전달하는 구조는 아니다.
 
 ### 3.4 H.264 인코딩과 콜백
 
 `EncoderManager`는 별도 작업 스레드에서 COM과 Media Foundation을 초기화한다. 먼저 D3D11 장치 관리자와 Media Foundation H.264 하드웨어 변환기를 준비하고, 사용할 수 없으면 로컬 동기식 Media Foundation 변환기를 찾는다. 비동기 하드웨어 변환기는 Media Foundation 이벤트(`NeedInput`, `HaveOutput`, drain 완료)를 처리한다.
 
-캡처 프레임은 최대 3개까지 큐에 보관한다. 큐가 가득 차면 오래된 프레임을 버려 누적 지연을 제한한다. 인코딩 준비 시 BGRA 픽셀을 CPU에서 NV12로 변환하고, 너비와 높이가 짝수인지 검사한다. 출력은 H.264이며 인코딩된 데이터의 크기, 타임스탬프, 키프레임 여부를 `SD_EncodedFrameCallback`에 전달한다.
+캡처 프레임은 최대 3개까지 큐에 보관한다. 큐가 가득 차면 오래된 프레임을 버려 누적 지연을 제한한다. GPU 캡처 경로의 NV12 프레임은 그대로 Media Foundation에 전달하고, GDI 또는 GPU 비디오 프로세서 대체 경로의 BGRA 프레임은 CPU에서 NV12로 변환한다. 출력은 H.264이며 인코딩된 데이터의 크기, 타임스탬프, 키프레임 여부를 `SD_EncodedFrameCallback`에 전달한다.
 
 콜백은 인코더 작업 스레드에서 호출된다. 전달된 `data` 버퍼는 콜백이 실행되는 동안에만 유효하므로, 콜백 이후 사용할 데이터는 콜백 안에서 별도 메모리로 복사해야 한다. 콜백 코드와 `user_data`는 다른 스레드에서 `sd_stop_encoder`가 반환할 때까지 유효해야 한다. 콜백 내부에서 핸들을 파괴하지 않는다. 콜백에서 인코더를 직접 중지하면 `SD_ERROR_INVALID_STATE`가 반환될 수 있으므로 외부 스레드에서 중지한다.
 

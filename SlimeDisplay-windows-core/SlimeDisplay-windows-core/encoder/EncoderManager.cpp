@@ -309,7 +309,8 @@ void ConvertBgraToNv12(
 }
 
 HRESULT CreateInputSample(
-    const std::vector<uint8_t>& bgra,
+    const std::vector<uint8_t>& pixels,
+    bool isNv12,
     uint32_t width,
     uint32_t height,
     int64_t presentationTime,
@@ -328,16 +329,31 @@ HRESULT CreateInputSample(
         &buffer);
     BYTE* destination = nullptr;
     DWORD maximumLength = 0;
+    bool bufferLocked = false;
     if (SUCCEEDED(hr)) {
         hr = buffer->Lock(&destination, nullptr, &maximumLength);
+        bufferLocked = SUCCEEDED(hr);
     }
     if (SUCCEEDED(hr)) {
-        ConvertBgraToNv12(
-            bgra,
-            width,
-            height,
-            destination);
-        hr = buffer->Unlock();
+        if (isNv12) {
+            if (pixels.size() != nv12Size) {
+                hr = E_INVALIDARG;
+            } else {
+                std::memcpy(destination, pixels.data(), nv12Size);
+            }
+        } else {
+            ConvertBgraToNv12(
+                pixels,
+                width,
+                height,
+                destination);
+        }
+    }
+    if (bufferLocked) {
+        const HRESULT unlockResult = buffer->Unlock();
+        if (SUCCEEDED(hr)) {
+            hr = unlockResult;
+        }
     }
     if (SUCCEEDED(hr)) {
         hr = buffer->SetCurrentLength(static_cast<DWORD>(nv12Size));
@@ -560,13 +576,15 @@ SD_Result EncoderManager::stop()
 }
 
 SD_Result EncoderManager::enqueue_frame(
-    const std::vector<uint8_t>& bgra,
+    const std::vector<uint8_t>& pixels,
+    bool isNv12,
     int64_t presentationTime)
 {
     if (!running_) {
         return SD_SUCCESS;
     }
 
+    Frame queuedFrame{pixels, isNv12, presentationTime};
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_) {
@@ -575,7 +593,7 @@ SD_Result EncoderManager::enqueue_frame(
         if (frames_.size() == kMaximumQueuedFrames) {
             frames_.pop_front();
         }
-        frames_.push_back(Frame{bgra, presentationTime});
+        frames_.push_back(std::move(queuedFrame));
     }
     condition_.notify_one();
     return SD_SUCCESS;
@@ -738,7 +756,8 @@ void EncoderManager::run(uint32_t width, uint32_t height, uint32_t fps)
             if (haveFrame) {
                 ComPtr<IMFSample> inputSample;
                 hr = CreateInputSample(
-                    frame.bgra,
+                    frame.pixels,
+                    frame.is_nv12,
                     width,
                     height,
                     frame.presentation_time,
@@ -794,7 +813,8 @@ void EncoderManager::run(uint32_t width, uint32_t height, uint32_t fps)
 
             ComPtr<IMFSample> inputSample;
             hr = CreateInputSample(
-                frame.bgra,
+                frame.pixels,
+                frame.is_nv12,
                 width,
                 height,
                 frame.presentation_time,

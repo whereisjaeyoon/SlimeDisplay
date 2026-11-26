@@ -27,6 +27,14 @@ struct DxgiCaptureResources {
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGIOutputDuplication> duplication;
     ComPtr<ID3D11Texture2D> staging_texture;
+    ComPtr<ID3D11VideoDevice> video_device;
+    ComPtr<ID3D11VideoContext> video_context;
+    ComPtr<ID3D11VideoProcessorEnumerator> processor_enumerator;
+    ComPtr<ID3D11VideoProcessor> processor;
+    ComPtr<ID3D11Texture2D> nv12_texture;
+    ComPtr<ID3D11Texture2D> nv12_staging_texture;
+    ComPtr<ID3D11VideoProcessorOutputView> nv12_output_view;
+    bool nv12_enabled = false;
 };
 
 BOOL CALLBACK FindMonitor(
@@ -55,6 +63,7 @@ HRESULT CreateDxgiCapture(
     const std::wstring& deviceName,
     uint32_t width,
     uint32_t height,
+    uint32_t fps,
     DxgiCaptureResources& resources)
 {
     ComPtr<IDXGIFactory1> factory;
@@ -99,7 +108,8 @@ HRESULT CreateDxgiCapture(
                 adapter.Get(),
                 D3D_DRIVER_TYPE_UNKNOWN,
                 nullptr,
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT |
+                    D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
                 nullptr,
                 0,
                 D3D11_SDK_VERSION,
@@ -134,10 +144,108 @@ HRESULT CreateDxgiCapture(
             textureDescription.SampleDesc.Count = 1;
             textureDescription.Usage = D3D11_USAGE_STAGING;
             textureDescription.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-            return resources.device->CreateTexture2D(
+            hr = resources.device->CreateTexture2D(
                 &textureDescription,
                 nullptr,
                 &resources.staging_texture);
+            if (FAILED(hr)) {
+                return hr;
+            }
+
+            if ((width & 1) == 0 && (height & 1) == 0) {
+                HRESULT videoHr = resources.device.As(
+                    &resources.video_device);
+                if (SUCCEEDED(videoHr)) {
+                    videoHr = resources.context.As(
+                        &resources.video_context);
+                }
+
+                if (SUCCEEDED(videoHr)) {
+                    D3D11_VIDEO_PROCESSOR_CONTENT_DESC contentDescription{};
+                    contentDescription.InputFrameFormat =
+                        D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+                    contentDescription.InputFrameRate = {fps, 1};
+                    contentDescription.InputWidth = width;
+                    contentDescription.InputHeight = height;
+                    contentDescription.OutputFrameRate = {fps, 1};
+                    contentDescription.OutputWidth = width;
+                    contentDescription.OutputHeight = height;
+                    contentDescription.Usage =
+                        D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+                    videoHr =
+                        resources.video_device->CreateVideoProcessorEnumerator(
+                            &contentDescription,
+                            &resources.processor_enumerator);
+                }
+                UINT formatSupport = 0;
+                if (SUCCEEDED(videoHr)) {
+                    videoHr =
+                        resources.processor_enumerator->CheckVideoProcessorFormat(
+                            duplicationDescription.ModeDesc.Format,
+                            &formatSupport);
+                    if (SUCCEEDED(videoHr) &&
+                        (formatSupport &
+                            D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) == 0) {
+                        videoHr = DXGI_ERROR_UNSUPPORTED;
+                    }
+                }
+                if (SUCCEEDED(videoHr)) {
+                    videoHr =
+                        resources.processor_enumerator->CheckVideoProcessorFormat(
+                            DXGI_FORMAT_NV12,
+                            &formatSupport);
+                    if (SUCCEEDED(videoHr) &&
+                        (formatSupport &
+                            D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT) == 0) {
+                        videoHr = DXGI_ERROR_UNSUPPORTED;
+                    }
+                }
+                if (SUCCEEDED(videoHr)) {
+                    videoHr = resources.video_device->CreateVideoProcessor(
+                        resources.processor_enumerator.Get(),
+                        0,
+                        &resources.processor);
+                }
+
+                D3D11_TEXTURE2D_DESC nv12Description{};
+                nv12Description.Width = width;
+                nv12Description.Height = height;
+                nv12Description.MipLevels = 1;
+                nv12Description.ArraySize = 1;
+                nv12Description.Format = DXGI_FORMAT_NV12;
+                nv12Description.SampleDesc.Count = 1;
+                nv12Description.Usage = D3D11_USAGE_DEFAULT;
+                nv12Description.BindFlags = D3D11_BIND_RENDER_TARGET;
+                if (SUCCEEDED(videoHr)) {
+                    videoHr = resources.device->CreateTexture2D(
+                        &nv12Description,
+                        nullptr,
+                        &resources.nv12_texture);
+                }
+                if (SUCCEEDED(videoHr)) {
+                    nv12Description.Usage = D3D11_USAGE_STAGING;
+                    nv12Description.BindFlags = 0;
+                    nv12Description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+                    videoHr = resources.device->CreateTexture2D(
+                        &nv12Description,
+                        nullptr,
+                        &resources.nv12_staging_texture);
+                }
+                if (SUCCEEDED(videoHr)) {
+                    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC outputViewDescription{};
+                    outputViewDescription.ViewDimension =
+                        D3D11_VPOV_DIMENSION_TEXTURE2D;
+                    videoHr =
+                        resources.video_device->CreateVideoProcessorOutputView(
+                            resources.nv12_texture.Get(),
+                            resources.processor_enumerator.Get(),
+                            &outputViewDescription,
+                            &resources.nv12_output_view);
+                }
+                resources.nv12_enabled = SUCCEEDED(videoHr);
+            }
+
+            return S_OK;
         }
     }
 
@@ -148,7 +256,8 @@ HRESULT CaptureDxgiFrame(
     DxgiCaptureResources& resources,
     uint32_t width,
     uint32_t height,
-    std::vector<uint8_t>& pixels)
+    std::vector<uint8_t>& pixels,
+    bool& isNv12)
 {
     DXGI_OUTDUPL_FRAME_INFO frameInfo{};
     ComPtr<IDXGIResource> desktopResource;
@@ -165,7 +274,74 @@ HRESULT CaptureDxgiFrame(
 
     ComPtr<ID3D11Texture2D> desktopTexture;
     hr = desktopResource.As(&desktopTexture);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && resources.nv12_enabled) {
+        ComPtr<ID3D11VideoProcessorInputView> inputView;
+        D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputViewDescription{};
+        inputViewDescription.ViewDimension =
+            D3D11_VPIV_DIMENSION_TEXTURE2D;
+        hr = resources.video_device->CreateVideoProcessorInputView(
+            desktopTexture.Get(),
+            resources.processor_enumerator.Get(),
+            &inputViewDescription,
+            &inputView);
+        if (SUCCEEDED(hr)) {
+            D3D11_VIDEO_PROCESSOR_STREAM stream{};
+            stream.Enable = TRUE;
+            stream.pInputSurface = inputView.Get();
+            hr = resources.video_context->VideoProcessorBlt(
+                resources.processor.Get(),
+                resources.nv12_output_view.Get(),
+                0,
+                1,
+                &stream);
+        }
+        if (SUCCEEDED(hr)) {
+            resources.context->CopyResource(
+                resources.nv12_staging_texture.Get(),
+                resources.nv12_texture.Get());
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            hr = resources.context->Map(
+                resources.nv12_staging_texture.Get(),
+                0,
+                D3D11_MAP_READ,
+                0,
+                &mapped);
+            if (SUCCEEDED(hr)) {
+                const size_t rowBytes = width;
+                const size_t ySize = static_cast<size_t>(width) * height;
+                pixels.resize(ySize + ySize / 2);
+                const auto* source =
+                    static_cast<const uint8_t*>(mapped.pData);
+                for (uint32_t row = 0; row < height; ++row) {
+                    std::memcpy(
+                        pixels.data() + static_cast<size_t>(row) * rowBytes,
+                        source + static_cast<size_t>(row) * mapped.RowPitch,
+                        rowBytes);
+                }
+                const uint8_t* sourceUv =
+                    source + static_cast<size_t>(mapped.RowPitch) * height;
+                uint8_t* destinationUv = pixels.data() + ySize;
+                for (uint32_t row = 0; row < height / 2; ++row) {
+                    std::memcpy(
+                        destinationUv + static_cast<size_t>(row) * rowBytes,
+                        sourceUv + static_cast<size_t>(row) * mapped.RowPitch,
+                        rowBytes);
+                }
+                resources.context->Unmap(
+                    resources.nv12_staging_texture.Get(),
+                    0);
+                isNv12 = true;
+            }
+        }
+    }
+
+    if (FAILED(hr) && resources.nv12_enabled && desktopTexture != nullptr) {
+        resources.nv12_enabled = false;
+        hr = S_OK;
+    }
+
+    if (SUCCEEDED(hr) && desktopTexture != nullptr && !isNv12) {
+        pixels.resize(static_cast<size_t>(width) * height * 4);
         resources.context->CopyResource(
             resources.staging_texture.Get(),
             desktopTexture.Get());
@@ -188,6 +364,7 @@ HRESULT CaptureDxgiFrame(
             resources.context->Unmap(
                 resources.staging_texture.Get(),
                 0);
+            isNv12 = false;
         }
     }
 
@@ -329,7 +506,13 @@ void CaptureManager::run(
         reinterpret_cast<LPARAM>(&search));
     DxgiCaptureResources dxgi;
     const bool useDxgi =
-        SUCCEEDED(CreateDxgiCapture(deviceName, width, height, dxgi));
+        SUCCEEDED(CreateDxgiCapture(deviceName, width, height, fps, dxgi));
+    if (useDxgi) {
+        OutputDebugStringW(
+            dxgi.nv12_enabled
+                ? L"CaptureManager: GPU NV12 conversion enabled.\n"
+                : L"CaptureManager: using BGRA CPU fallback.\n");
+    }
     CaptureResources resources;
     if (!useDxgi) {
         if (!search.found ||
@@ -384,14 +567,15 @@ void CaptureManager::run(
     const auto frameInterval = std::chrono::nanoseconds(
         1000000000ULL / fps);
     auto nextFrame = startTime;
-    for (size_t alpha = 3; alpha < pixels.size(); alpha += 4) {
-        pixels[alpha] = 0xff;
-    }
-
     while (running_) {
+        bool isNv12 = false;
         if (useDxgi) {
             const HRESULT result =
-                CaptureDxgiFrame(dxgi, width, height, pixels);
+                CaptureDxgiFrame(dxgi, width, height, pixels, isNv12);
+            if (result == S_FALSE) {
+                std::this_thread::sleep_for(frameInterval);
+                continue;
+            }
             if (FAILED(result)) {
                 OutputDebugStringW(
                     L"CaptureManager: DXGI Desktop Duplication failed.\n");
@@ -423,8 +607,10 @@ void CaptureManager::run(
                 pixels.size());
         }
 
-        for (size_t alpha = 3; alpha < pixels.size(); alpha += 4) {
-            pixels[alpha] = 0xff;
+        if (!isNv12) {
+            for (size_t alpha = 3; alpha < pixels.size(); alpha += 4) {
+                pixels[alpha] = 0xff;
+            }
         }
 
         const auto elapsed =
@@ -433,7 +619,7 @@ void CaptureManager::run(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 elapsed).count() / 100;
         try {
-            callback(pixels, presentationTime);
+            callback(pixels, isNv12, presentationTime);
         } catch (...) {
             OutputDebugStringW(
                 L"CaptureManager: frame callback threw an exception.\n");
