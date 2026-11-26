@@ -2,7 +2,7 @@
 
 ## 1. Project Overview
 
-The Windows version of SlimeDisplay is a module that creates a virtual display using the Windows Indirect Display Driver (IDD), captures frames from that display, and encodes them.
+The Windows version of SlimeDisplay uses the existing [Virtual Display Driver (VDD)](https://github.com/VirtualDrivers/Virtual-Display-Driver) to provide virtual monitors, then captures and encodes a selected monitor. SlimeDisplay does not implement or install its own IDD.
 
 It provides the same C ABI as the macOS version so that the upper-level C++ Server can control virtual displays through the same interface on both platforms.
 
@@ -10,12 +10,13 @@ It provides the same C ABI as the macOS version so that the upper-level C++ Serv
 
 | Item | Technology |
 |---|---|
-| IDE | Visual Studio 2022 |
+| IDE | Visual Studio 18 (v145 toolset) |
 | Language | C++20 |
 | Compiler | MSVC |
-| Build system | MSBuild / CMake (possible future integration) |
-| Display driver | Windows Indirect Display Driver |
-| Driver framework | UMDF 2 / IddCx |
+| Build system | MSBuild |
+| Display driver | VirtualDrivers Virtual Display Driver (installed separately) |
+| Display integration | Windows display configuration APIs |
+| Capture API | DXGI Desktop Duplication (GDI fallback) |
 | Graphics API | Direct3D 11 |
 | Encoder | Media Foundation |
 | Architecture | x64 |
@@ -31,19 +32,21 @@ It provides the same C ABI as the macOS version so that the upper-level C++ Serv
                  SlimeDisplay.dll
                            |
              +-------------+-------------+
-             |             |             |
-             v             v             v
-       DisplayManager  CaptureManager  EncoderManager
-             |             |             |
-             |             |             |
-             v             v             v
-          IDD Driver   D3D11 Surface  Media Foundation
-             |
-             v
-      Windows Display Stack
-             |
-             v
-       Virtual Monitor
+             |                           |
+             v                           v
+       DisplayManager               CaptureManager
+             |                           |
+             v                           v
+ Windows Display APIs       DXGI Desktop Duplication
+             |                           |
+             v                           v
+ Existing VirtualDrivers VDD       D3D11 staging texture
+             |                           |
+             v                           v
+      Virtual Monitor            EncoderManager
+                                         |
+                                         v
+                                Media Foundation
 ```
 
 ### Module Responsibilities
@@ -51,31 +54,33 @@ It provides the same C ABI as the macOS version so that the upper-level C++ Serv
 **SlimeDisplay.dll**
 
 - Provides the C ABI.
-- Requests virtual display creation and removal.
+- Selects and configures an existing VDD virtual monitor.
+- Reports `SD_ERROR_NOT_SUPPORTED` when no usable VDD monitor is available.
 - Manages display state.
 - Controls frame capture and the encoder.
 - Delivers encoded frames through an external callback.
 
-**SlimeDisplayDriver**
+**VirtualDrivers VDD (external dependency)**
 
-- Registers a virtual monitor based on the Windows IDD.
-- Manages display modes and resolutions.
-- Receives SwapChain frames from the OS.
-- Provides Direct3D surfaces.
+- Installs and exposes virtual monitors to the Windows Display Stack.
+- Is configured and updated using its own installer and Virtual Driver Control.
+- Does not expose a SlimeDisplay-specific C API; the DLL uses Windows display and capture APIs.
 
 **CaptureManager**
 
-- Receives frames from the IDD SwapChain.
-- Processes GPU surfaces.
+- Captures the selected VDD monitor with DXGI Desktop Duplication.
+- Falls back to GDI capture when Desktop Duplication is unavailable.
+- Converts the captured monitor to BGRA frames for the encoder.
 - Passes frames to the encoder.
 
 **EncoderManager**
 
-- Performs hardware encoding through Media Foundation.
-- Encodes with supported codecs such as H.264.
+- Uses the Media Foundation H.264 hardware encoder when available, with a
+  synchronous Media Foundation encoder fallback.
+- Converts BGRA frames to NV12 and bounds its queue to keep latency controlled.
 - Delivers encoded frames through a DLL callback.
 
-## 3. Project Directory Layout
+## 3. Active Solution Structure
 
 ```text
 SlimeDisplay/
@@ -83,45 +88,32 @@ SlimeDisplay/
 │   ├── slimedisplay.h
 │   └── slimedisplay_types.h
 │
-├── windows/
-│   ├── SlimeDisplay.sln
-│   │
-│   ├── SlimeDisplay/
-│   │   ├── SlimeDisplay.vcxproj
-│   │   ├── SDAPI.cpp
-│   │   ├── SDManager.h
-│   │   ├── SDManager.cpp
-│   │   │
-│   │   ├── display/
-│   │   │   ├── DisplayManager.h
-│   │   │   └── DisplayManager.cpp
-│   │   │
-│   │   ├── capture/
-│   │   │   ├── CaptureManager.h
-│   │   │   └── CaptureManager.cpp
-│   │   │
-│   │   └── encoder/
-│   │       ├── EncoderManager.h
-│   │       └── EncoderManager.cpp
-│   │
-│   ├── SlimeDisplayDriver/
-│   │   ├── Driver.cpp
-│   │   ├── Driver.h
-│   │   ├── Direct3DDevice.cpp
-│   │   ├── IndirectDeviceContext.cpp
-│   │   ├── IndirectMonitorContext.cpp
-│   │   ├── SwapChainProcessor.cpp
-│   │   ├── Device.tmh
-│   │   └── SlimeDisplayDriver.vcxproj
-│   │
-│   └── SlimeDisplayTest/
-│       ├── main.cpp
-│       └── SlimeDisplayTest.vcxproj
-│
-└── README.md
+└── SlimeDisplay-windows-core/
+    ├── README.md
+    ├── README-kr.md
+    ├── SlimeDisplay.sln
+    │
+    ├── SlimeDisplay-windows-core/
+    │   ├── SlimeDisplay-windows-core.vcxproj
+    │   ├── SDAPI.cpp
+    │   ├── SDManager.h
+    │   ├── SDManager.cpp
+    │   ├── display/
+    │   │   ├── DisplayManager.h
+    │   │   └── DisplayManager.cpp
+    │   ├── capture/
+    │   │   ├── CaptureManager.h
+    │   │   └── CaptureManager.cpp
+    │   └── encoder/
+    │       ├── EncoderManager.h
+    │       └── EncoderManager.cpp
+    │
+    └── SlimeDisplayTest/
+        ├── SlimeDisplayTest.vcxproj
+        └── main.cpp
 ```
 
-`SlimeDisplayDriver` is based on the Microsoft IDD Sample. Build and distribute the DLL and driver as separate projects.
+The shared headers under the repository-level `include/` directory are included by the DLL project. The external VDD is not part of this repository and must be installed separately.
 
 ## 4. DLL Public API
 
@@ -131,8 +123,8 @@ Use the shared `slimedisplay.h` and `slimedisplay_types.h` headers.
 |---|---|
 | `sd_create` | Create a SlimeDisplay instance |
 | `sd_destroy` | Destroy an instance |
-| `sd_create_virtual_display` | Create a virtual display |
-| `sd_destroy_virtual_display` | Remove a virtual display |
+| `sd_create_virtual_display` | Select/configure an existing VDD monitor |
+| `sd_destroy_virtual_display` | Release the selected monitor; does not uninstall the VDD |
 | `sd_get_virtual_display_info` | Retrieve display information |
 | `sd_start_capture` | Start frame capture |
 | `sd_stop_capture` | Stop frame capture |
@@ -144,46 +136,54 @@ Use the shared `slimedisplay.h` and `slimedisplay_types.h` headers.
 ### API Implementation Principles
 
 - Keep the external interface as a C ABI.
+- Export the same function signatures declared by the macOS public `slimedisplay.h`.
 - Separate the internal implementation into C++ classes.
 - Use `SD_Handle` as an opaque handle that hides the internal `SDManager` object.
 - Do not allow C++ exceptions to cross the C ABI boundary.
 - Call callbacks on a separate encoding path so network transmission cannot block it.
 - Clearly define the lifetime of frame memory passed to callbacks.
 
-## 5. IDD Driver
+The Windows DLL exports the shared C ABI. It selects an already-installed VDD
+monitor, applies a supported mode, and restores the original mode when the
+display is destroyed. Capture uses Desktop Duplication where available, with
+GDI as a fallback; H.264 encoding uses a Media Foundation hardware transform
+when available and otherwise a synchronous Media Foundation transform.
 
-A virtual display cannot be created with an ordinary DLL alone. An Indirect Display Driver is required to register the display device with the OS.
+The encoded-frame callback receives H.264 data whose buffer is valid only for
+the duration of that callback. The Windows smoke test uses the VDD's current
+mode, checks the reported display info, and waits for an encoded frame.
+The callback runs on the encoder worker. Keep its code and `user_data` valid
+until `sd_stop_encoder` returns on another thread; do not destroy the handle
+from the callback.
+`sd_get_version` returns `0` until a shared library-version scheme is defined.
 
-IDD is a user-mode driver based on UMDF and communicates with the Windows Display Stack through IddCx.
+## 5. Existing Virtual Display Driver
 
-### Main Components
+Use the existing [VirtualDrivers Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) instead of building a new IDD. Install and configure it separately with its installer or Virtual Driver Control, and make sure at least one virtual monitor is enabled before using SlimeDisplay.
 
-| Component | Purpose |
-|---|---|
-| `Direct3DDevice` | Manages the Direct3D device |
-| `IndirectDeviceContext` | Manages the indirect display device |
-| `IndirectMonitorContext` | Manages virtual monitors and display modes |
-| `SwapChainProcessor` | Processes frames provided by the OS |
+The VDD creates virtual monitor devices and publishes their supported resolutions to Windows. SlimeDisplay must enumerate and select an existing VDD monitor through Windows display APIs. The VDD does not expose a SlimeDisplay C ABI, and its monitor count and available modes are configured through the VDD's own control/configuration tools.
+
+Do not install, build, or manage a second IDD from the SlimeDisplay DLL. Driver installation, updates, signing, and removal remain the responsibility of the VDD package.
 
 ### Frame Processing Path
 
 ```text
-Windows Desktop Composition
+Existing VDD Virtual Monitor
             |
             v
-     IDD SwapChain
+ DXGI Desktop Duplication
             |
             v
-   SwapChainProcessor
+ D3D11 staging texture
             |
             v
-    Direct3D Surface
+  BGRA frame (CPU)
             |
             v
-      CaptureManager
-            |
-            v
-   Media Foundation Encoder
+  BGRA-to-NV12 conversion
+             |
+             v
+  Media Foundation H.264
             |
             v
      Encoded Frame
@@ -192,118 +192,56 @@ Windows Desktop Composition
    SD_EncodedFrameCallback
 ```
 
-Prefer a GPU-based path that passes GPU surfaces to the encoder without unnecessary copies to CPU memory.
+Desktop Duplication captures through the Windows display stack; the current
+implementation reads frames back to CPU memory for BGRA-to-NV12 conversion.
+It does not access the VDD driver's internal SwapChain.
 
-## 6. Visual Studio 2022 Project Setup
+## 6. Build
 
-### SlimeDisplay DLL
-
-Create a project in Visual Studio with these options:
-
-- Create a new project
-- Dynamic-Link Library (DLL)
-- C++
-- Project name: `SlimeDisplay`
-- Platform: x64
-- Language standard: C++20
-
-Key properties:
-
-| Setting | Value |
-|---|---|
-| Configuration Type | Dynamic Library (.dll) |
-| C++ Language Standard | ISO C++20 |
-| Character Set | Use Unicode |
-| Runtime Library (Debug) | Multi-threaded Debug DLL (/MDd) |
-| Runtime Library (Release) | Multi-threaded DLL (/MD) |
-| Precompiled Header | Not Using |
-| Target Architecture | x64 |
-
-Preprocessor definitions:
-
-```text
-SLIMEDISPLAY_EXPORTS
-WIN32_LEAN_AND_MEAN
-NOMINMAX
-```
-
-Additional include directories:
-
-```text
-$(SolutionDir)..\include
-```
-
-### IDD Driver
-
-Base the IDD Driver project on the Indirect Display Driver Sample in Microsoft's Windows Driver Samples repository.
-
-Required development components:
-
-- Visual Studio 2022
-- Windows SDK
-- Windows Driver Kit (WDK)
-- UMDF and IddCx development support
-
-Configure the driver project separately from the ordinary DLL project.
+- Open the existing `SlimeDisplay.sln` in Visual Studio 18 with the v145
+  toolset.
+- Select `x64` and build the `SlimeDisplay-windows-core` project.
+- The solution builds the DLL and `SlimeDisplayTest`.
+- Install and enable the external VDD before running `SlimeDisplayTest`. The
+  test uses its current display mode and restores that mode on exit.
 
 ## 7. Development Phases
 
-### Phase 1 — Basic DLL Structure
+### Phase 1 — Existing VDD Integration
 
-- [ ] Create a Visual Studio solution.
-- [ ] Create the SlimeDisplay DLL project.
-- [ ] Connect the shared headers.
-- [ ] Implement `SDManager`.
-- [ ] Implement `sd_create`.
-- [ ] Implement `sd_destroy`.
-- [ ] Implement `sd_get_version`.
-- [ ] Test DLL loading.
+- [ ] Install and enable the external VirtualDrivers VDD.
+- [x] Enumerate the VDD virtual monitors through Windows display APIs.
+- [x] Select an existing virtual monitor and configure its display mode.
+- [x] Verify monitor capture through DXGI Desktop Duplication on the installed VDD.
 
-### Phase 2 — IDD Driver
+### Phase 2 — Capture
 
-- [ ] Build the Microsoft IDD Sample.
-- [ ] Install the driver in a test environment.
-- [ ] Create a Software Device and connect the driver.
-- [ ] Verify virtual monitor creation.
-- [ ] Configure resolution and display modes.
-- [ ] Verify receipt of SwapChain frames.
+- [x] Connect Desktop Duplication to `CaptureManager`.
+- [x] Read back frames for BGRA-to-NV12 conversion.
+- [x] Implement frame processing and synchronization.
+- [x] Manage capture and GPU resources.
+- [x] Implement capture start/stop.
 
-### Phase 3 — Capture
+### Phase 3 — Encoder
 
-- [ ] Connect `SwapChainProcessor` to `CaptureManager`.
-- [ ] Pass Direct3D surfaces.
-- [ ] Implement frame processing and synchronization.
-- [ ] Manage GPU resources.
-- [ ] Implement capture start/stop.
+- [x] Initialize Media Foundation.
+- [x] Connect the H.264 encoder with a synchronous fallback.
+- [x] Verify hardware-encoding support on the current system.
+- [x] Implement the encoded-frame callback.
+- [x] Handle frame timestamps.
 
-### Phase 4 — Encoder
-
-- [ ] Initialize Media Foundation.
-- [ ] Connect the H.264 encoder.
-- [ ] Verify hardware-encoding support.
-- [ ] Implement the encoded-frame callback.
-- [ ] Handle frame timestamps.
-
-### Phase 5 — Integration Testing
+### Phase 4 — Integration Testing
 
 - [ ] Test the complete DLL API.
-- [ ] Repeatedly create and remove virtual displays.
+- [ ] Repeatedly select and release an existing VDD virtual monitor.
 - [ ] Capture at FHD 60 FPS.
-- [ ] Verify delivery of encoded frames.
+- [x] Verify delivery of encoded frames on the current system.
 - [ ] Test long-running stability.
 - [ ] Integrate with the Server through the C ABI.
 
-## 8. Testing and Distribution Considerations
+## 8. References
 
-- Installing an IDD driver requires a driver package and INF configuration.
-- Check test-signing and driver-installation policies in the development environment.
-- Prepare driver-signing and installation procedures separately for general distribution.
-- Manage version compatibility between the driver and DLL.
-- Ensure that removing the driver releases the virtual monitor and related resources correctly.
-
-## 9. References
-
-- [Microsoft Windows Driver Samples — Indirect Display Driver](https://github.com/microsoft/Windows-driver-samples/tree/main/video/IndirectDisplay)
-- [Microsoft Learn — Indirect Display Driver Model](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/indirect-display-driver-model-overview)
-- [Microsoft Learn — IddCx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/iddcx/)
+- [VirtualDrivers — Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)
+- [Microsoft Learn — Desktop Duplication](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/desktop-dup-api)
+- [Microsoft Learn — QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig)
 - [Microsoft Learn — Media Foundation](https://learn.microsoft.com/en-us/windows/win32/medfound/microsoft-media-foundation-sdk)
